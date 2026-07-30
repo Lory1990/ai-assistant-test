@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { keycloak } from '../auth/keycloak'
+import { logout } from '../auth/authStore'
 import {
   useMe,
   useRequestLinkCode,
@@ -133,7 +133,7 @@ function ProfileSection() {
             <span className="item-meta">{me.team.name}</span>
           </li>
         </ul>
-        <button className="hud-button" style={{ marginTop: 12 }} onClick={() => keycloak.logout()}>
+        <button className="hud-button" style={{ marginTop: 12 }} onClick={() => logout()}>
           Esci
         </button>
       </div>

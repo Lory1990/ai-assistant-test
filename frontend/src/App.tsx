@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, Outlet } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import './App.css'
-import { keycloak, initKeycloak } from './auth/keycloak'
+import { restoreSession, subscribeToAuth, isAuthenticated } from './auth/authStore'
+import LoginScreen from './auth/LoginScreen'
+import SocialCallback from './auth/SocialCallback'
 import { useMe } from './queries'
 import { useLiveUpdates } from './ws'
 import { SectionLoader } from './components/SectionLoader'
@@ -37,19 +40,6 @@ function useClock() {
     return () => clearInterval(id)
   }, [])
   return now
-}
-
-function LoginScreen() {
-  return (
-    <div className="login-screen">
-      <div className="brand-ring" />
-      <h1>Family HUD</h1>
-      <p>Il quartier generale digitale della tua famiglia: pasti, obiettivi, allenamenti, casa e calendario in un unico posto.</p>
-      <button className="hud-button" onClick={() => keycloak.login()}>
-        Accedi
-      </button>
-    </div>
-  )
 }
 
 function DashboardLayout() {
@@ -115,13 +105,33 @@ function Dashboard() {
 
 function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
-    initKeycloak().then(setAuthenticated)
-  }, [])
+    restoreSession().then(setAuthenticated)
+    // L'authStore notifica login, logout e sessione scaduta: la dashboard
+    // compare e sparisce senza che nessuno debba ricaricare la pagina.
+    return subscribeToAuth(() => {
+      const next = isAuthenticated()
+      // Svuotare la cache al logout: senza questo chi si logga dopo vedrebbe
+      // per un istante i dati di chi c'era prima.
+      if (!next) queryClient.clear()
+      setAuthenticated(next)
+    })
+  }, [queryClient])
 
   if (authenticated === null) return null
-  if (!authenticated) return <LoginScreen />
+
+  // La rotta di callback social deve essere raggiungibile da non autenticati:
+  // e' proprio lei che completa il login.
+  if (!authenticated) {
+    return (
+      <Routes>
+        <Route path="/auth/callback" element={<SocialCallback />} />
+        <Route path="*" element={<LoginScreen />} />
+      </Routes>
+    )
+  }
 
   return <Dashboard />
 }

@@ -9,6 +9,7 @@ import { startGoalScheduler } from "./modules/goals/scheduler.js";
 import { startCalendarReminderScheduler } from "./modules/calendar/scheduler.js";
 import { startWorkoutRecapScheduler } from "./modules/workout/scheduler.js";
 import { startSocialPublishScheduler } from "./modules/social/scheduler.js";
+import { registerAuthRoutes } from "./api/auth.js";
 import { registerTeamRoutes } from "./api/team.js";
 import { registerHomeRoutes } from "./api/home.js";
 import { registerAssistantRoutes } from "./api/assistant.js";
@@ -37,6 +38,7 @@ async function main() {
   await app.register(fastifyStatic, { root: uploadsRoot, prefix: "/uploads/" });
 
   app.get("/health", async () => ({ status: "ok" }));
+  registerAuthRoutes(app);
   registerTeamRoutes(app);
   registerHomeRoutes(app);
   registerAssistantRoutes(app);

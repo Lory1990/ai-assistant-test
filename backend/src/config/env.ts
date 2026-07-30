@@ -11,6 +11,15 @@ export const env = {
   // recuperare le chiavi JWKS usa invece l'hostname interno del container Keycloak.
   keycloakIssuerUrl: optional("KEYCLOAK_ISSUER_URL") ?? "http://localhost:8081/realms/personal-assistant",
   keycloakInternalUrl: optional("KEYCLOAK_INTERNAL_URL") ?? optional("KEYCLOAK_ISSUER_URL") ?? "http://localhost:8081/realms/personal-assistant",
+  // Client confidenziale usato dal backend per il login email/password
+  // (direct grant), lo scambio del code social e l'Admin API (service
+  // account). Il browser non lo vede mai: la schermata di login e' nella
+  // nostra app e parla solo col nostro backend.
+  keycloakBackendClient: {
+    clientId: optional("KEYCLOAK_BACKEND_CLIENT_ID") ?? "backend-service",
+    clientSecret: optional("KEYCLOAK_BACKEND_CLIENT_SECRET"),
+    socialRedirectUri: optional("KEYCLOAK_SOCIAL_REDIRECT_URI") ?? "http://localhost:3000/api/auth/social/callback",
+  },
   telegramBotToken: optional("TELEGRAM_BOT_TOKEN"),
   shelly: {
     cloudServer: optional("SHELLY_CLOUD_SERVER"),

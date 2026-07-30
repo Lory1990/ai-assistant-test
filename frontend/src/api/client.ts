@@ -1,4 +1,4 @@
-import { keycloak } from "../auth/keycloak";
+import { getAccessToken } from "../auth/authStore";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
@@ -60,13 +60,13 @@ export interface TahomaDevice {
 }
 
 async function authorizedFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  await keycloak.updateToken(30).catch(() => undefined);
+  const token = await getAccessToken();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
-      Authorization: `Bearer ${keycloak.token}`,
+      Authorization: `Bearer ${token}`,
     },
   });
   if (!res.ok) {
@@ -285,13 +285,13 @@ export function cancelSocialPost(id: string): Promise<{ ok: boolean }> {
 // Upload multipart: il Content-Type con il boundary lo imposta il browser,
 // quindi non passa da authorizedFetch (che forza application/json).
 export async function uploadSocialMedia(file: File): Promise<{ mediaPath: string }> {
-  await keycloak.updateToken(30).catch(() => undefined);
+  const token = await getAccessToken();
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${API_URL}/api/social/media`, {
     method: "POST",
     body: form,
-    headers: { Authorization: `Bearer ${keycloak.token}` },
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);

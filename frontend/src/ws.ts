@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { keycloak } from './auth/keycloak'
+import { getAccessToken } from './auth/authStore'
 import { useInvalidateAllData } from './queries'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
@@ -31,8 +31,8 @@ export function useLiveUpdates(): boolean {
       socket = new WebSocket(WS_URL)
 
       socket.onopen = async () => {
-        await keycloak.updateToken(30).catch(() => undefined)
-        socket?.send(JSON.stringify({ type: 'auth', token: keycloak.token }))
+        const token = await getAccessToken()
+        socket?.send(JSON.stringify({ type: 'auth', token }))
       }
 
       socket.onmessage = (event) => {
