@@ -1,5 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { getAiClient } from "../../ai/client.js";
+import { getAiProvider } from "../../ai/client.js";
+import type { AiToolDefinition } from "../../ai/types.js";
 
 export interface PlannedMeal {
   name: string;
@@ -18,10 +18,10 @@ export interface MealPlanResult {
   shoppingList: ShoppingListEntry[];
 }
 
-const SUBMIT_MEAL_PLAN_TOOL: Anthropic.Tool = {
+const SUBMIT_MEAL_PLAN_TOOL: AiToolDefinition = {
   name: "submit_meal_plan",
   description: "Invia il piano alimentare generato e la lista della spesa corrispondente.",
-  input_schema: {
+  inputSchema: {
     type: "object",
     properties: {
       meals: {
@@ -56,15 +56,14 @@ const SUBMIT_MEAL_PLAN_TOOL: Anthropic.Tool = {
 };
 
 export async function generateMealPlan(request: string, goalsContext: string[]): Promise<MealPlanResult> {
-  const { client, model } = getAiClient();
+  const provider = getAiProvider();
 
   const contextLines = goalsContext.length > 0 ? `Obiettivi attivi della famiglia:\n${goalsContext.map((g) => `- ${g}`).join("\n")}\n\n` : "";
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: 2048,
+  const turn = await provider.complete({
+    maxTokens: 2048,
     tools: [SUBMIT_MEAL_PLAN_TOOL],
-    tool_choice: { type: "tool", name: "submit_meal_plan" },
+    forceTool: SUBMIT_MEAL_PLAN_TOOL.name,
     messages: [
       {
         role: "user",
@@ -77,10 +76,10 @@ export async function generateMealPlan(request: string, goalsContext: string[]):
     ],
   });
 
-  const toolUse = response.content.find((block) => block.type === "tool_use");
-  if (!toolUse || toolUse.type !== "tool_use") {
+  const call = turn.toolCalls.find((c) => c.name === SUBMIT_MEAL_PLAN_TOOL.name);
+  if (!call) {
     throw new Error("Il modello non ha restituito un piano alimentare valido.");
   }
 
-  return toolUse.input as MealPlanResult;
+  return call.input as MealPlanResult;
 }

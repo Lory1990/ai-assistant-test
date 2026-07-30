@@ -1,12 +1,12 @@
-import type Anthropic from "@anthropic-ai/sdk";
-import { getAiClient } from "../../ai/client.js";
+import { getAiProvider } from "../../ai/client.js";
+import type { AiContentPart, AiMessage, AiToolResult } from "../../ai/types.js";
 import { ASSISTANT_TOOLS, executeTool, type ToolContext } from "./tools.js";
 
 export interface ChatMessage {
   role: "user" | "assistant";
-  // Stringa per i messaggi testuali (web/bot); array di content block Anthropic
-  // (es. image + text) quando il bot Telegram inoltra una foto in visione.
-  content: Anthropic.MessageParam["content"];
+  // Stringa per i messaggi testuali (web/bot); array di content part quando il
+  // bot Telegram inoltra una foto da analizzare.
+  content: string | AiContentPart[];
 }
 
 export interface ToolCallLog {
@@ -28,52 +28,58 @@ const MAX_TOOL_ITERATIONS = 6;
  * Loop agentico con tool-use: chiama il modello, se richiede tool li esegue
  * davvero (scoped sull'utente/team autenticato) e ripete finche' il modello
  * non produce una risposta testuale finale o si raggiunge il limite di giri.
+ *
+ * Lavora sul formato di conversazione neutro, quindi funziona identico con un
+ * modello Claude o GPT: la traduzione di protocollo sta nell'adapter.
  */
 export async function chat(ctx: ToolContext, history: ChatMessage[]): Promise<{ reply: string; toolCalls: ToolCallLog[] }> {
-  const { client, model } = getAiClient();
+  const provider = getAiProvider();
   const toolCalls: ToolCallLog[] = [];
 
-  const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
+  const messages: AiMessage[] = history.map((m) =>
+    m.role === "user" ? { role: "user", content: m.content } : { role: "assistant", text: asText(m.content), toolCalls: [] },
+  );
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await client.messages.create({
-      model,
-      max_tokens: 1500,
+    const turn = await provider.complete({
       system: SYSTEM_PROMPT,
       tools: ASSISTANT_TOOLS,
+      maxTokens: 1500,
       messages,
     });
 
-    const toolUseBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-
-    if (toolUseBlocks.length === 0) {
-      const reply = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("\n")
-        .trim();
-      return { reply: reply || "Fatto.", toolCalls };
+    if (turn.toolCalls.length === 0) {
+      return { reply: turn.text || "Fatto.", toolCalls };
     }
 
-    messages.push({ role: "assistant", content: response.content });
+    messages.push({ role: "assistant", text: turn.text, toolCalls: turn.toolCalls });
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolUse of toolUseBlocks) {
+    const results: AiToolResult[] = [];
+    for (const call of turn.toolCalls) {
       let result: string;
       try {
-        result = await executeTool(toolUse.name, toolUse.input, ctx);
+        result = await executeTool(call.name, call.input, ctx);
       } catch (err) {
         result = `Errore: ${(err as Error).message}`;
       }
-      toolCalls.push({ name: toolUse.name, input: toolUse.input, result });
-      toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: result });
+      toolCalls.push({ name: call.name, input: call.input, result });
+      results.push({ toolCallId: call.id, content: result });
     }
 
-    messages.push({ role: "user", content: toolResults });
+    messages.push({ role: "tool_results", results });
   }
 
   return {
     reply: "Non sono riuscito a completare la richiesta in un numero ragionevole di passaggi: puoi riformularla in modo più semplice?",
     toolCalls,
   };
+}
+
+/** Lo storico di un assistente contiene solo testo: le immagini le manda l'utente. */
+function asText(content: string | AiContentPart[]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((part): part is Extract<AiContentPart, { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
 }

@@ -1,5 +1,5 @@
 import { Bot } from "grammy";
-import type Anthropic from "@anthropic-ai/sdk";
+import type { AiContentPart } from "../ai/types.js";
 import { env } from "../config/env.js";
 import { prisma } from "../db/client.js";
 import { unsetUserFields } from "../db/rawOps.js";
@@ -444,8 +444,8 @@ export function createBot(): Bot {
       const buffer = await downloadTelegramFile(photo.file_id);
       const photoPath = await savePhoto(buffer, `${Date.now()}-${photo.file_id}.jpg`);
 
-      const content: Anthropic.MessageParam["content"] = [
-        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: buffer.toString("base64") } },
+      const content: AiContentPart[] = [
+        { type: "image", mediaType: "image/jpeg", base64: buffer.toString("base64") },
         {
           type: "text",
           text:

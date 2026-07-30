@@ -72,9 +72,12 @@ export const env = {
     model: optional("AZURE_AI_FOUNDRY_MODEL") ?? "claude-sonnet-5",
   },
   alphaVantageApiKey: optional("ALPHA_VANTAGE_API_KEY"),
-  // Usato solo per trasformare in testo i messaggi vocali Telegram (Whisper API)
-  // prima di passarli all'assistente: non e' collegato al provider AI principale.
+  // Usato per trasformare in testo i messaggi vocali Telegram (Whisper API).
+  // Se si valorizza anche OPENAI_CHAT_MODEL, la stessa chiave serve come
+  // provider AI principale via l'API OpenAI diretta (alternativa ad Anthropic
+  // e ad Azure AI Foundry).
   openAiApiKey: optional("OPENAI_API_KEY"),
+  openAiChatModel: optional("OPENAI_CHAT_MODEL"),
   // Dove reindirizzare il browser dopo il callback OAuth di Google (l'utente
   // torna sulla dashboard web, non sul backend).
   frontendUrl: optional("FRONTEND_URL") ?? "http://localhost:8080",

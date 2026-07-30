@@ -1,4 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type { AiToolDefinition } from "../../ai/types.js";
 import { getDevices as getShellyDevices, toggleDevice as toggleShellyDevice } from "../shelly/index.js";
 import { getShutters, openShutter, closeShutter, stopShutter } from "../tahoma/index.js";
 import { logMeal, getTodayMeals } from "../food/index.js";
@@ -14,16 +14,16 @@ export interface ToolContext {
   teamId: string;
 }
 
-export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
+export const ASSISTANT_TOOLS: AiToolDefinition[] = [
   {
     name: "list_shelly_devices",
     description: "Elenca le luci/prese Shelly di casa con il loro stato (online/offline, acceso/spento).",
-    input_schema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "toggle_shelly_device",
     description: "Accende o spegne una luce/presa Shelly.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         deviceId: { type: "string", description: "Id del device, ottenuto da list_shelly_devices." },
@@ -35,12 +35,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "list_tahoma_shutters",
     description: "Elenca le serrande Tahoma di casa.",
-    input_schema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "control_tahoma_shutter",
     description: "Apre, chiude o ferma una serranda Tahoma.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         deviceURL: { type: "string", description: "deviceURL della serranda, ottenuto da list_tahoma_shutters." },
@@ -52,7 +52,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "log_meal",
     description: "Registra un pasto mangiato ora tra i pasti di oggi del team.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         description: { type: "string", description: 'es. "pasta al pomodoro"' },
@@ -64,12 +64,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_today_meals",
     description: "Elenca i pasti (mangiati e pianificati) registrati oggi dal team, con calorie.",
-    input_schema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "generate_meal_plan",
     description: "Genera con l'AI un piano alimentare per oggi in base alla richiesta e lo salva tra i pasti pianificati, aggiornando anche la lista della spesa.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         request: { type: "string", description: 'es. "1800 kcal, vegetariano, voglio perdere peso"' },
@@ -80,12 +80,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_shopping_list",
     description: "Mostra la lista della spesa del team.",
-    input_schema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "add_shopping_list_items",
     description: "Aggiunge articoli alla lista della spesa.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         items: {
@@ -103,7 +103,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "check_shopping_list_item",
     description: "Segna un articolo della lista della spesa come acquistato.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: { nameQuery: { type: "string", description: "Nome (anche parziale) dell'articolo." } },
       required: ["nameQuery"],
@@ -113,7 +113,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     name: "create_goal",
     description:
       "Crea un nuovo obiettivo (generale o di allenamento), visibile a tutto il team oppure solo all'utente che lo crea.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         title: { type: "string" },
@@ -130,7 +130,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "list_goals",
     description: "Elenca gli obiettivi attivi, separati tra quelli del team e quelli personali dell'utente.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: { category: { type: "string", enum: ["general", "gym"] } },
     },
@@ -138,7 +138,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "log_workout_exercise",
     description: 'Registra un esercizio svolto oggi, da testo libero (es. "panca piana 4x8 60kg").',
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: { text: { type: "string" } },
       required: ["text"],
@@ -147,7 +147,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_workout_recap",
     description: "Genera un recap dell'andamento degli allenamenti del team negli ultimi giorni.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: { periodDays: { type: "number", description: "Default 7 se non specificato." } },
     },
@@ -155,12 +155,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "list_upcoming_events",
     description: "Elenca i prossimi eventi di calendario segnati come importanti.",
-    input_schema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "mark_event_important",
     description: "Segna un evento di calendario (gia' sincronizzato) come importante, per ricevere un promemoria.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: { externalId: { type: "string" } },
       required: ["externalId"],
@@ -170,12 +170,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     name: "get_portfolio",
     description:
       "Mostra il portafoglio investimenti personale dell'utente (azioni/ETF) con prezzo di mercato aggiornato, valore e plusvalenza. Solo tracciamento: non fornisce consigli di investimento.",
-    input_schema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "add_investment_holding",
     description: "Aggiunge un titolo (azione/ETF) al portafoglio investimenti personale dell'utente.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: {
         symbol: { type: "string", description: 'Ticker, es. "AAPL", "VWCE.DE".' },
@@ -188,7 +188,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "remove_investment_holding",
     description: "Rimuove un titolo dal portafoglio investimenti personale, dato il simbolo.",
-    input_schema: {
+    inputSchema: {
       type: "object",
       properties: { symbol: { type: "string" } },
       required: ["symbol"],
