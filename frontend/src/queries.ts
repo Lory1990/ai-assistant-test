@@ -22,9 +22,17 @@ import {
   fetchDiaryEntries,
   addDiaryEntry,
   removeDiaryEntry,
+  fetchSocialAccounts,
+  requestMetaConnectUrl,
+  disconnectSocialAccount,
+  fetchSocialPosts,
+  scheduleSocialPost,
+  cancelSocialPost,
+  uploadSocialMedia,
   type CreateGoalInput,
   type AddHoldingInput,
   type ChatMessage,
+  type SchedulePostInput,
 } from './api/client'
 
 export const queryKeys = {
@@ -36,6 +44,8 @@ export const queryKeys = {
   portfolio: ['portfolio'] as const,
   googleStatus: ['google-status'] as const,
   diary: ['diary'] as const,
+  socialAccounts: ['social-accounts'] as const,
+  socialPosts: ['social-posts'] as const,
 }
 
 export function useMe() {
@@ -164,6 +174,46 @@ export function useRemoveDiaryEntry() {
   return useMutation({
     mutationFn: (id: string) => removeDiaryEntry(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.diary }),
+  })
+}
+
+export function useSocialAccounts() {
+  return useQuery({ queryKey: queryKeys.socialAccounts, queryFn: fetchSocialAccounts })
+}
+
+export function useRequestMetaConnectUrl() {
+  return useMutation({ mutationFn: requestMetaConnectUrl })
+}
+
+export function useDisconnectSocialAccount() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => disconnectSocialAccount(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.socialAccounts }),
+  })
+}
+
+export function useSocialPosts() {
+  return useQuery({ queryKey: queryKeys.socialPosts, queryFn: fetchSocialPosts })
+}
+
+export function useUploadSocialMedia() {
+  return useMutation({ mutationFn: (file: File) => uploadSocialMedia(file) })
+}
+
+export function useScheduleSocialPost() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SchedulePostInput) => scheduleSocialPost(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.socialPosts }),
+  })
+}
+
+export function useCancelSocialPost() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => cancelSocialPost(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.socialPosts }),
   })
 }
 

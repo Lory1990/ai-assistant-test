@@ -69,4 +69,16 @@ export const env = {
   // Dove reindirizzare il browser dopo il callback OAuth di Google (l'utente
   // torna sulla dashboard web, non sul backend).
   frontendUrl: optional("FRONTEND_URL") ?? "http://localhost:8080",
+  // App Meta (Facebook Login) — copre sia Pagine Facebook che account Instagram
+  // Business collegati alla stessa app. Crea l'app su https://developers.facebook.com/apps.
+  meta: {
+    appId: optional("META_APP_ID"),
+    appSecret: optional("META_APP_SECRET"),
+    redirectUri: optional("META_REDIRECT_URI"),
+  },
+  // URL pubblico e raggiungibile da internet sotto cui e' servita /uploads:
+  // obbligatorio per pubblicare immagini su Instagram (i suoi server la
+  // scaricano da questo URL) o foto su Facebook; senza, restano possibili solo
+  // i post di solo testo su Facebook. Vuoto di default (es. su localhost).
+  publicBaseUrl: optional("PUBLIC_BASE_URL"),
 };

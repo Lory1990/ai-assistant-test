@@ -12,6 +12,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@fastify/cors": "^11.3.0",
+    "@fastify/multipart": "^10.1.0",
+    "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.3.0",
     "@prisma/client": "^6.1.0",
     "dotenv": "^16.4.5",

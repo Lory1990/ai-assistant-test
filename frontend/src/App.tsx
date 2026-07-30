@@ -14,6 +14,7 @@ const HomeSection = lazy(() => import('./sections/HomeSection'))
 const GoalsSection = lazy(() => import('./sections/GoalsSection'))
 const InvestmentsSection = lazy(() => import('./sections/InvestmentsSection'))
 const DiarySection = lazy(() => import('./sections/DiarySection'))
+const SocialSection = lazy(() => import('./sections/SocialSection'))
 const ProfileSection = lazy(() => import('./sections/ProfileSection'))
 
 const SECTIONS = [
@@ -25,6 +26,7 @@ const SECTIONS = [
   { path: 'goals', label: 'Obiettivi' },
   { path: 'investments', label: 'Investimenti' },
   { path: 'diary', label: 'Diario' },
+  { path: 'social', label: 'Social' },
   { path: 'profile', label: 'Profilo' },
 ]
 
@@ -103,6 +105,7 @@ function Dashboard() {
         <Route path="goals" element={<GoalsSection />} />
         <Route path="investments" element={<InvestmentsSection />} />
         <Route path="diary" element={<DiarySection />} />
+        <Route path="social" element={<SocialSection />} />
         <Route path="profile" element={<ProfileSection />} />
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Route>

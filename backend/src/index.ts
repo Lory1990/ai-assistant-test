@@ -1,9 +1,14 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
+import fastifyMultipart from "@fastify/multipart";
 import { createBot } from "./bot/index.js";
 import { startGoalScheduler } from "./modules/goals/scheduler.js";
 import { startCalendarReminderScheduler } from "./modules/calendar/scheduler.js";
 import { startWorkoutRecapScheduler } from "./modules/workout/scheduler.js";
+import { startSocialPublishScheduler } from "./modules/social/scheduler.js";
 import { registerTeamRoutes } from "./api/team.js";
 import { registerHomeRoutes } from "./api/home.js";
 import { registerAssistantRoutes } from "./api/assistant.js";
@@ -11,6 +16,7 @@ import { registerInvestmentsRoutes } from "./api/investments.js";
 import { registerWebSocket } from "./ws/index.js";
 import { registerGoogleAuthRoutes } from "./api/googleAuth.js";
 import { registerDiaryRoutes } from "./api/diary.js";
+import { registerSocialRoutes } from "./api/social.js";
 import { ensureSparseUniqueIndexes } from "./db/ensureIndexes.js";
 
 async function main() {
@@ -22,6 +28,13 @@ async function main() {
   // parametriche (es. /api/investments/:id), lasciandolo fuori dal preflight
   // Access-Control-Allow-Methods e facendo bloccare la richiesta dal browser.
   await app.register(cors, { origin: true, methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] });
+  await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+  // Le immagini dei post social devono essere scaricabili dai server di
+  // Meta/Instagram: servite staticamente sotto /uploads.
+  // @fastify/static rifiuta una root inesistente, quindi la creiamo prima.
+  const uploadsRoot = join(process.cwd(), "uploads");
+  await mkdir(uploadsRoot, { recursive: true });
+  await app.register(fastifyStatic, { root: uploadsRoot, prefix: "/uploads/" });
 
   app.get("/health", async () => ({ status: "ok" }));
   registerTeamRoutes(app);
@@ -30,6 +43,7 @@ async function main() {
   registerInvestmentsRoutes(app);
   registerGoogleAuthRoutes(app);
   registerDiaryRoutes(app);
+  registerSocialRoutes(app);
   await registerWebSocket(app);
 
   const port = Number(process.env.PORT ?? 3000);
@@ -39,6 +53,7 @@ async function main() {
   startGoalScheduler(bot);
   startCalendarReminderScheduler(bot);
   startWorkoutRecapScheduler(bot);
+  startSocialPublishScheduler();
 
   bot.start();
   app.log.info("Telegram bot avviato");

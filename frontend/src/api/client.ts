@@ -230,3 +230,72 @@ export function addDiaryEntry(content: string, mood?: string): Promise<DiaryEntr
 export function removeDiaryEntry(id: string): Promise<{ ok: boolean }> {
   return authorizedFetch(`/api/diary/${id}`, { method: "DELETE" });
 }
+
+export interface SocialAccount {
+  id: string;
+  provider: "facebook_page" | "instagram";
+  externalId: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface SocialPost {
+  id: string;
+  content: string;
+  mediaPath: string | null;
+  scheduledAt: string;
+  status: "pending" | "published" | "failed" | "canceled";
+  externalPostId: string | null;
+  error: string | null;
+  publishedAt: string | null;
+  socialAccount: SocialAccount;
+}
+
+export function fetchSocialAccounts(): Promise<SocialAccount[]> {
+  return authorizedFetch<SocialAccount[]>("/api/integrations/meta/status");
+}
+
+export function requestMetaConnectUrl(): Promise<{ url: string }> {
+  return authorizedFetch("/api/integrations/meta/connect");
+}
+
+export function disconnectSocialAccount(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/integrations/meta/${id}`, { method: "DELETE" });
+}
+
+export function fetchSocialPosts(): Promise<SocialPost[]> {
+  return authorizedFetch<SocialPost[]>("/api/social/posts");
+}
+
+export interface SchedulePostInput {
+  socialAccountId: string;
+  content: string;
+  scheduledAt: string;
+  mediaPath?: string;
+}
+
+export function scheduleSocialPost(input: SchedulePostInput): Promise<SocialPost> {
+  return authorizedFetch("/api/social/posts", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function cancelSocialPost(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/social/posts/${id}`, { method: "DELETE" });
+}
+
+// Upload multipart: il Content-Type con il boundary lo imposta il browser,
+// quindi non passa da authorizedFetch (che forza application/json).
+export async function uploadSocialMedia(file: File): Promise<{ mediaPath: string }> {
+  await keycloak.updateToken(30).catch(() => undefined);
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_URL}/api/social/media`, {
+    method: "POST",
+    body: form,
+    headers: { Authorization: `Bearer ${keycloak.token}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Upload fallito: ${res.status}`);
+  }
+  return res.json() as Promise<{ mediaPath: string }>;
+}
