@@ -6,6 +6,11 @@ function optional(name: string): string | undefined {
 
 export const env = {
   redisUrl: optional("REDIS_URL") ?? "redis://localhost:6379",
+  // L'issuer atteso nei token e' quello visto dal browser (es. http://localhost:8081/...).
+  // In Docker il backend non puo' raggiungere "localhost:8081" (e' se stesso): per
+  // recuperare le chiavi JWKS usa invece l'hostname interno del container Keycloak.
+  keycloakIssuerUrl: optional("KEYCLOAK_ISSUER_URL") ?? "http://localhost:8081/realms/personal-assistant",
+  keycloakInternalUrl: optional("KEYCLOAK_INTERNAL_URL") ?? optional("KEYCLOAK_ISSUER_URL") ?? "http://localhost:8081/realms/personal-assistant",
   telegramBotToken: optional("TELEGRAM_BOT_TOKEN"),
   shelly: {
     cloudServer: optional("SHELLY_CLOUD_SERVER"),
@@ -47,4 +52,21 @@ export const env = {
     mqttPort: Number(optional("HISENSE_TV_MQTT_PORT") ?? 36669),
   },
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
+  // Modelli Claude ospitati su Azure AI Foundry: espongono lo stesso formato di
+  // richiesta dell'API Anthropic nativa, quindi basta puntare l'SDK Anthropic
+  // a questo endpoint con questa chiave invece che ad api.anthropic.com.
+  // Endpoint/nome deployment esatti vanno verificati nel portale Azure AI
+  // Foundry della propria risorsa (variano per regione/risorsa).
+  azureAiFoundry: {
+    endpoint: optional("AZURE_AI_FOUNDRY_ENDPOINT"),
+    apiKey: optional("AZURE_AI_FOUNDRY_API_KEY"),
+    model: optional("AZURE_AI_FOUNDRY_MODEL") ?? "claude-sonnet-5",
+  },
+  alphaVantageApiKey: optional("ALPHA_VANTAGE_API_KEY"),
+  // Usato solo per trasformare in testo i messaggi vocali Telegram (Whisper API)
+  // prima di passarli all'assistente: non e' collegato al provider AI principale.
+  openAiApiKey: optional("OPENAI_API_KEY"),
+  // Dove reindirizzare il browser dopo il callback OAuth di Google (l'utente
+  // torna sulla dashboard web, non sul backend).
+  frontendUrl: optional("FRONTEND_URL") ?? "http://localhost:8080",
 };

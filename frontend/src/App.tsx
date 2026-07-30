@@ -1,51 +1,126 @@
-import { useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { NavLink, Navigate, Route, Routes, Outlet } from 'react-router-dom'
 import './App.css'
+import { keycloak, initKeycloak } from './auth/keycloak'
+import { useMe } from './queries'
+import { useLiveUpdates } from './ws'
+import { SectionLoader } from './components/SectionLoader'
 
-type Tab = 'pasti' | 'obiettivi' | 'calendario' | 'device'
+const ChatSection = lazy(() => import('./sections/ChatSection'))
+const OverviewSection = lazy(() => import('./sections/OverviewSection'))
+const FitnessSection = lazy(() => import('./sections/FitnessSection'))
+const FoodSection = lazy(() => import('./sections/FoodSection'))
+const HomeSection = lazy(() => import('./sections/HomeSection'))
+const GoalsSection = lazy(() => import('./sections/GoalsSection'))
+const InvestmentsSection = lazy(() => import('./sections/InvestmentsSection'))
+const DiarySection = lazy(() => import('./sections/DiarySection'))
+const ProfileSection = lazy(() => import('./sections/ProfileSection'))
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'pasti', label: 'Pasti' },
-  { id: 'obiettivi', label: 'Obiettivi' },
-  { id: 'calendario', label: 'Calendario' },
-  { id: 'device', label: 'Device' },
+const SECTIONS = [
+  { path: 'chat', label: 'Chat' },
+  { path: 'overview', label: 'Panoramica' },
+  { path: 'fitness', label: 'Fitness' },
+  { path: 'food', label: 'Alimentazione' },
+  { path: 'home', label: 'Casa' },
+  { path: 'goals', label: 'Obiettivi' },
+  { path: 'investments', label: 'Investimenti' },
+  { path: 'diary', label: 'Diario' },
+  { path: 'profile', label: 'Profilo' },
 ]
 
-function Placeholder({ title }: { title: string }) {
+function useClock() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return now
+}
+
+function LoginScreen() {
   return (
-    <div>
-      <h2>{title}</h2>
-      <p>
-        Vista in costruzione. Il backend espone dati e azioni per questa sezione;
-        qui andrà collegata la fetch verso <code>/api/...</code>.
-      </p>
+    <div className="login-screen">
+      <div className="brand-ring" />
+      <h1>Family HUD</h1>
+      <p>Il quartier generale digitale della tua famiglia: pasti, obiettivi, allenamenti, casa e calendario in un unico posto.</p>
+      <button className="hud-button" onClick={() => keycloak.login()}>
+        Accedi
+      </button>
     </div>
   )
 }
 
-function App() {
-  const [tab, setTab] = useState<Tab>('pasti')
+function DashboardLayout() {
+  const { data: me } = useMe()
+  const clock = useClock()
+  const live = useLiveUpdates()
+
+  if (!me) return null
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '2rem', fontFamily: 'sans-serif' }}>
-      <h1>Personal AI Assistant</h1>
-      <nav style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{ fontWeight: tab === t.id ? 'bold' : 'normal' }}
+    <div className="hud-shell">
+      <nav className="hud-sidebar">
+        <div className="hud-sidebar__brand">Family HUD</div>
+        {SECTIONS.map((s) => (
+          <NavLink
+            key={s.path}
+            to={`/${s.path}`}
+            className={({ isActive }) => `hud-sidebar__item ${isActive ? 'is-active' : ''}`}
           >
-            {t.label}
-          </button>
+            {s.label}
+          </NavLink>
         ))}
+        <div className="hud-sidebar__live" title={live ? 'Aggiornamenti live attivi' : 'Riconnessione...'}>
+          <span className={`hud-live-dot ${live ? 'is-live' : ''}`} />
+          {live ? 'Live' : 'Riconnessione...'}
+        </div>
       </nav>
 
-      {tab === 'pasti' && <Placeholder title="Pasti registrati" />}
-      {tab === 'obiettivi' && <Placeholder title="Obiettivi e azioni motivazionali" />}
-      {tab === 'calendario' && <Placeholder title="Eventi importanti" />}
-      {tab === 'device' && <Placeholder title="Device Shelly" />}
+      <div className="hud-main">
+        <header className="hud-header">
+          <span className="family-name">{me.team.name}</span>
+          <span className="clock">{clock.toLocaleTimeString('it-IT')}</span>
+        </header>
+
+        <Suspense fallback={<SectionLoader />}>
+          <Outlet />
+        </Suspense>
+      </div>
     </div>
   )
+}
+
+function Dashboard() {
+  return (
+    <Routes>
+      <Route element={<DashboardLayout />}>
+        <Route index element={<Navigate to="/chat" replace />} />
+        <Route path="chat" element={<ChatSection />} />
+        <Route path="overview" element={<OverviewSection />} />
+        <Route path="fitness" element={<FitnessSection />} />
+        <Route path="food" element={<FoodSection />} />
+        <Route path="home" element={<HomeSection />} />
+        <Route path="goals" element={<GoalsSection />} />
+        <Route path="investments" element={<InvestmentsSection />} />
+        <Route path="diary" element={<DiarySection />} />
+        <Route path="profile" element={<ProfileSection />} />
+        <Route path="*" element={<Navigate to="/chat" replace />} />
+      </Route>
+    </Routes>
+  )
+}
+
+function App() {
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    initKeycloak().then(setAuthenticated)
+  }, [])
+
+  if (authenticated === null) return null
+  if (!authenticated) return <LoginScreen />
+
+  return <Dashboard />
 }
 
 export default App

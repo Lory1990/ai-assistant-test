@@ -7,23 +7,96 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
+model Team {
   id                 String    @id @default(auto()) @map("_id") @db.ObjectId
-  telegramId         String    @unique
+  name               String
+  inviteCode         String    @unique
   createdAt          DateTime  @default(now())
   recapFrequencyDays Int       @default(7)
   lastWorkoutRecapAt DateTime?
 
+  members           User[]
+  meals             Meal[]
+  goals             Goal[]
+  devices           Device[]
+  calendarEvents    CalendarEvent[]
+  workoutSessions   WorkoutSession[]
+  shoppingListItems ShoppingListItem[]
+}
+
+model User {
+  id                        String    @id @default(auto()) @map("_id") @db.ObjectId
+  // Identita' Keycloak (login web email/password/social). Assente finche' l'utente
+  // usa solo il bot Telegram senza aver mai collegato un account web.
+  keycloakId                String?   @unique
+  email                     String?
+  displayName               String?
+  // Identita' Telegram. Assente finche' non si collega il bot con /collega.
+  telegramId                String?   @unique
+  team                      Team      @relation(fields: [teamId], references: [id])
+  teamId                    String    @db.ObjectId
+  createdAt                 DateTime  @default(now())
+  // Codice temporaneo mostrato in dashboard per collegare il bot Telegram
+  // allo stesso account/team via il comando /collega <code>.
+  telegramLinkCode          String?   @unique
+  telegramLinkCodeExpiresAt DateTime?
+
   meals           Meal[]
   goals           Goal[]
-  devices         Device[]
   emailAccounts   EmailAccount[]
   calendarEvents  CalendarEvent[]
   workoutSessions WorkoutSession[]
+  holdings        Holding[]
+  googleAccount   GoogleAccount?
+  diaryEntries    DiaryEntry[]
+}
+
+/** Diario personale: mai condiviso col team, nemmeno tramite l'assistente. */
+model DiaryEntry {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @db.ObjectId
+  content   String
+  mood      String? // es. "😊", "😔", "😐" — libero, non un enum chiuso
+  createdAt DateTime @default(now())
+}
+
+/**
+ * Collegamento OAuth2 a un account Google personale (Calendar + Gmail in
+ * sola lettura). Solo la connessione/i token: la lettura effettiva di
+ * calendario/email non e' ancora implementata, e' predisposta per dopo.
+ */
+model GoogleAccount {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  user                 User     @relation(fields: [userId], references: [id])
+  userId               String   @unique @db.ObjectId
+  email                String
+  accessToken          String
+  refreshToken         String
+  accessTokenExpiresAt DateTime
+  scopes               String
+  createdAt            DateTime @default(now())
+}
+
+/**
+ * Portafoglio di investimenti personale (non condiviso col team): a
+ * differenza di pasti/obiettivi/allenamenti, i dati finanziari restano
+ * privati di chi li inserisce.
+ */
+model Holding {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String   @db.ObjectId
+  symbol     String // es. "AAPL", "VWCE.DE"
+  quantity   Float
+  costBasis  Float? // prezzo medio di acquisto per azione/quota, per calcolare la plusvalenza
+  createdAt  DateTime @default(now())
 }
 
 model Meal {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  team        Team     @relation(fields: [teamId], references: [id])
+  teamId      String   @db.ObjectId
   user        User     @relation(fields: [userId], references: [id])
   userId      String   @db.ObjectId
   description String
@@ -31,12 +104,26 @@ model Meal {
   photoPath   String?
   calories    Float?
   loggedAt    DateTime @default(now())
+  // true per i pasti generati da un piano alimentare AI (ancora da consumare),
+  // false per i pasti effettivamente registrati come mangiati.
+  planned     Boolean  @default(false)
+}
+
+model ShoppingListItem {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  team      Team      @relation(fields: [teamId], references: [id])
+  teamId    String    @db.ObjectId
+  name      String
+  quantity  String?
+  checked   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  checkedAt DateTime?
 }
 
 model Device {
   id         String  @id @default(auto()) @map("_id") @db.ObjectId
-  user       User    @relation(fields: [userId], references: [id])
-  userId     String  @db.ObjectId
+  team       Team    @relation(fields: [teamId], references: [id])
+  teamId     String  @db.ObjectId
   name       String
   provider   String // "shelly" | "tahoma"
   externalId String
@@ -46,11 +133,18 @@ model Device {
 
 model Goal {
   id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  team        Team         @relation(fields: [teamId], references: [id])
+  teamId      String       @db.ObjectId
   user        User         @relation(fields: [userId], references: [id])
   userId      String       @db.ObjectId
   title       String
   description String?
   category    String       @default("general") // "general" | "gym"
+  // "personal": visibile solo a chi l'ha creato. "team": visibile a tutto il team.
+  scope       String       @default("team") // "personal" | "team"
+  dueDate     DateTime?
+  priority    String       @default("medium") // "low" | "medium" | "high"
+  important   Boolean      @default(false)
   active      Boolean      @default(true)
   createdAt   DateTime     @default(now())
   actions     GoalAction[]
@@ -76,6 +170,8 @@ model EmailAccount {
 
 model CalendarEvent {
   id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  team           Team      @relation(fields: [teamId], references: [id])
+  teamId         String    @db.ObjectId
   user           User      @relation(fields: [userId], references: [id])
   userId         String    @db.ObjectId
   provider       String
@@ -88,6 +184,8 @@ model CalendarEvent {
 
 model WorkoutSession {
   id        String            @id @default(auto()) @map("_id") @db.ObjectId
+  team      Team              @relation(fields: [teamId], references: [id])
+  teamId    String            @db.ObjectId
   user      User              @relation(fields: [userId], references: [id])
   userId    String            @db.ObjectId
   loggedAt  DateTime          @default(now())

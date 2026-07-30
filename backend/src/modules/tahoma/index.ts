@@ -1,10 +1,14 @@
-import { tahomaClient } from "./client.js";
+import { tahomaClient, type TahomaDevice } from "./client.js";
 import { cached, redis } from "../../cache/redis.js";
 
 const LIST_CACHE_TTL_SECONDS = 30;
 
+export async function getShutters(): Promise<TahomaDevice[]> {
+  return cached("tahoma:devices", LIST_CACHE_TTL_SECONDS, () => tahomaClient.listDevices());
+}
+
 export async function listShutters(): Promise<string> {
-  const devices = await cached("tahoma:devices", LIST_CACHE_TTL_SECONDS, () => tahomaClient.listDevices());
+  const devices = await getShutters();
   if (devices.length === 0) return "Nessuna serranda trovata.";
   return devices.map((d) => `${d.label} (${d.deviceURL}) — ${d.controllable ? "disponibile" : "non disponibile"}`).join("\n");
 }

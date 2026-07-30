@@ -7,12 +7,12 @@ function startOfDay(date: Date): Date {
   return d;
 }
 
-export async function logExerciseFromText(userId: string, text: string) {
+export async function logExerciseFromText(userId: string, teamId: string, text: string) {
   const exercise = parseExerciseText(text);
-  return logExercise(userId, exercise);
+  return logExercise(userId, teamId, exercise);
 }
 
-export async function logExercise(userId: string, exercise: ParsedExercise) {
+export async function logExercise(userId: string, teamId: string, exercise: ParsedExercise) {
   const today = startOfDay(new Date());
   const existing = await prisma.workoutSession.findFirst({
     where: { userId, loggedAt: { gte: today } },
@@ -27,14 +27,16 @@ export async function logExercise(userId: string, exercise: ParsedExercise) {
   }
 
   return prisma.workoutSession.create({
-    data: { userId, exercises: [exercise] },
+    data: { userId, teamId, exercises: [exercise] },
   });
 }
 
-export async function getSessionsSince(userId: string, since: Date) {
+/** Sessioni di tutto il team, non solo di un singolo utente (condivisione decisa per il Team). */
+export async function getSessionsSince(teamId: string, since: Date) {
   return prisma.workoutSession.findMany({
-    where: { userId, loggedAt: { gte: since } },
+    where: { teamId, loggedAt: { gte: since } },
     orderBy: { loggedAt: "asc" },
+    include: { user: true },
   });
 }
 
@@ -57,34 +59,50 @@ function computeVolumeByExercise(sessions: Awaited<ReturnType<typeof getSessions
   return byName;
 }
 
+function countSessionsByMember(sessions: Awaited<ReturnType<typeof getSessionsSince>>): Map<string, number> {
+  const byMember = new Map<string, number>();
+  for (const session of sessions) {
+    const name = session.user.displayName ?? session.user.telegramId ?? session.userId;
+    byMember.set(name, (byMember.get(name) ?? 0) + 1);
+  }
+  return byMember;
+}
+
 /**
- * Recap euristico MVP: confronta il volume di allenamento (serie*ripetizioni*kg)
- * per esercizio nel periodo corrente vs il periodo precedente della stessa
- * durata, e lo mette in relazione con gli obiettivi attivi di categoria "gym".
+ * Recap euristico MVP a livello di team: confronta il volume di allenamento
+ * (serie*ripetizioni*kg) per esercizio, aggregato su tutti i membri, nel
+ * periodo corrente vs il periodo precedente della stessa durata, e lo mette
+ * in relazione con gli obiettivi attivi di categoria "gym" del team.
  * TODO: sostituire/arricchire con un LLM che generi un commento motivazionale
  * piu' naturale a partire su questi stessi dati aggregati.
  */
-export async function generateRecap(userId: string, periodDays: number): Promise<string> {
+export async function generateRecap(teamId: string, periodDays: number): Promise<string> {
   const now = new Date();
   const periodStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
   const previousPeriodStart = new Date(periodStart.getTime() - periodDays * 24 * 60 * 60 * 1000);
 
   const [currentSessions, previousSessions, gymGoals] = await Promise.all([
-    getSessionsSince(userId, periodStart),
+    getSessionsSince(teamId, periodStart),
     prisma.workoutSession.findMany({
-      where: { userId, loggedAt: { gte: previousPeriodStart, lt: periodStart } },
+      where: { teamId, loggedAt: { gte: previousPeriodStart, lt: periodStart } },
+      include: { user: true },
     }),
-    prisma.goal.findMany({ where: { userId, category: "gym", active: true } }),
+    prisma.goal.findMany({ where: { teamId, category: "gym", active: true } }),
   ]);
 
   if (currentSessions.length === 0) {
-    return `Negli ultimi ${periodDays} giorni non hai registrato allenamenti. Vuoi riprendere?`;
+    return `Negli ultimi ${periodDays} giorni il team non ha registrato allenamenti. Volete riprendere?`;
   }
 
   const currentVolume = computeVolumeByExercise(currentSessions);
   const previousVolume = computeVolumeByExercise(previousSessions);
+  const sessionsByMember = countSessionsByMember(currentSessions);
 
-  const lines: string[] = [`📊 Recap allenamenti (ultimi ${periodDays} giorni) — ${currentSessions.length} sessioni:`];
+  const lines: string[] = [
+    `📊 Recap allenamenti del team (ultimi ${periodDays} giorni) — ${currentSessions.length} sessioni:`,
+    ...Array.from(sessionsByMember, ([name, count]) => `👤 ${name}: ${count} sessioni`),
+    "",
+  ];
 
   for (const [name, current] of currentVolume) {
     const previous = previousVolume.get(name);

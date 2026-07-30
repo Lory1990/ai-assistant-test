@@ -31,6 +31,25 @@ services:
       timeout: 5s
       retries: 10
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/personal-assistant HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
   backend:
     build:
       context: .
@@ -40,6 +59,8 @@ services:
     environment:
       DATABASE_URL: "mongodb://mongo:27017/assistant?replicaSet=rs0"
       REDIS_URL: "redis://redis:6379"
+      KEYCLOAK_ISSUER_URL: "http://localhost:8081/realms/personal-assistant"
+      KEYCLOAK_INTERNAL_URL: "http://keycloak:8080/realms/personal-assistant"
       PORT: "3000"
     ports:
       - "3000:3000"
@@ -50,11 +71,18 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
 
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_KEYCLOAK_URL: "http://localhost:8081"
+        VITE_KEYCLOAK_REALM: "personal-assistant"
+        VITE_KEYCLOAK_CLIENT_ID: "web-dashboard"
+        VITE_API_URL: "http://localhost:3000"
     ports:
       - "8080:80"
     depends_on:
@@ -63,3 +91,4 @@ services:
 volumes:
   mongo_data:
   backend_uploads:
+  keycloak_data:

@@ -13,10 +13,15 @@ export async function markEventImportant(userId: string, externalId: string, imp
   });
 }
 
-export async function getUpcomingImportantEvents(userId: string) {
+/**
+ * Eventi importanti di tutto il team, non solo di chi li ha sincronizzati
+ * (condivisione decisa per il Team).
+ */
+export async function getUpcomingImportantEvents(teamId: string) {
   return prisma.calendarEvent.findMany({
-    where: { userId, important: true, startsAt: { gte: new Date() } },
+    where: { teamId, important: true, startsAt: { gte: new Date() } },
     orderBy: { startsAt: "asc" },
+    include: { user: true },
   });
 }
 
@@ -28,7 +33,7 @@ export async function getEventsNeedingReminder(now: Date, reminderWindowMs: numb
       reminderSentAt: null,
       startsAt: { gte: now, lte: windowEnd },
     },
-    include: { user: true },
+    include: { team: { include: { members: true } } },
   });
 }
 
