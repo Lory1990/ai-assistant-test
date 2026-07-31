@@ -1,8 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { logout } from '../auth/authStore'
 import {
   useMe,
+  useMemory,
+  useAddMemoryFact,
+  useRemoveMemoryFact,
   useGoogleStatus,
   useRequestGoogleConnectUrl,
   useDisconnectGoogle,
@@ -76,6 +79,83 @@ function TelegramLinkPanel({ telegramLinked, email }: { telegramLinked: boolean;
   )
 }
 
+
+/**
+ * Cosa l'assistente sa di te. Personale: nessun altro del team lo vede, e da
+ * qui si può correggere o cancellare quello che ha imparato da solo.
+ */
+function MemoryPanel() {
+  const { data: facts, isLoading, error } = useMemory()
+  const addFact = useAddMemoryFact()
+  const removeFact = useRemoveMemoryFact()
+  const [content, setContent] = useState('')
+  const [category, setCategory] = useState('')
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!content.trim()) return
+    addFact.mutate(
+      { content: content.trim(), category: category.trim() || undefined },
+      {
+        onSuccess: () => {
+          setContent('')
+          setCategory('')
+        },
+      },
+    )
+  }
+
+  return (
+    <div className="hud-panel">
+      <h3>Cosa l'assistente sa di te</h3>
+      <p className="link-hint" style={{ marginBottom: 12 }}>
+        Preferenze e vincoli che valgono in tutte le conversazioni. Solo tuoi: il team non li vede.
+      </p>
+
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <input
+          className="hud-input"
+          placeholder='es. "Sono vegetariano", "Mi alleno il lunedì e il giovedì"'
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            className="hud-input"
+            placeholder="Ambito (facoltativo): alimentazione, salute..."
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          />
+          <button className="hud-button" type="submit" disabled={addFact.isPending}>
+            {addFact.isPending ? 'Salvo...' : 'Ricorda'}
+          </button>
+        </div>
+        {addFact.isError && <p className="empty">{(addFact.error as Error).message}</p>}
+      </form>
+
+      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {error && <p className="empty">{(error as Error).message}</p>}
+        {!error && isLoading && <p className="empty">Caricamento...</p>}
+        {!error && facts && facts.length === 0 && (
+          <p className="empty">Non sa ancora nulla di te. Diglielo in chat, o scrivilo qui sopra.</p>
+        )}
+        {facts?.map((fact) => (
+          <div key={fact.id} className="device-row">
+            <span>
+              {fact.category && <span className="item-meta">[{fact.category}] </span>}
+              {fact.content}
+              {fact.source === 'assistant' && <span className="item-meta"> · imparato in chat</span>}
+            </span>
+            <button className="logout" onClick={() => removeFact.mutate(fact.id)} disabled={removeFact.isPending}>
+              dimentica
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ProfileSection() {
   const { data: me } = useMe()
   if (!me) return null
@@ -103,6 +183,7 @@ function ProfileSection() {
         </button>
       </div>
 
+      <MemoryPanel />
       <TelegramLinkPanel telegramLinked={me.telegramLinked} email={me.email} />
       <GoogleAccountPanel />
     </div>

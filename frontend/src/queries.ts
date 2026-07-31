@@ -15,7 +15,13 @@ import {
   fetchPortfolio,
   addHolding,
   removeHolding,
+  fetchExpenses,
+  addExpense,
+  removeExpense,
   sendChatMessage,
+  fetchMemory,
+  addMemoryFact,
+  removeMemoryFact,
   fetchConversations,
   fetchConversation,
   deleteConversation,
@@ -53,6 +59,8 @@ import {
   type ScheduleMarketingItemInput,
   type CreateGoalInput,
   type AddHoldingInput,
+  type AddExpenseInput,
+  type ExpenseFilters,
   type SchedulePostInput,
   type TrainingPlanInput,
   type NutritionPlanInput,
@@ -65,8 +73,12 @@ export const queryKeys = {
   tahomaShutters: ['tahoma-shutters'] as const,
   recentWorkouts: ['recent-workouts'] as const,
   portfolio: ['portfolio'] as const,
+  // I filtri fanno parte della chiave: cambiare categoria o periodo e' una
+  // query diversa, e la precedente resta in cache mentre si torna indietro.
+  expenses: (filters: ExpenseFilters = {}) => ['expenses', filters] as const,
   googleStatus: ['google-status'] as const,
   diary: ['diary'] as const,
+  memory: ['memory'] as const,
   conversations: ['conversations'] as const,
   conversation: (id: string) => ['conversation', id] as const,
   socialAccounts: ['social-accounts'] as const,
@@ -169,6 +181,47 @@ export function useRemoveHolding() {
   return useMutation({
     mutationFn: (id: string) => removeHolding(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.portfolio }),
+  })
+}
+
+export function useExpenses(filters: ExpenseFilters = {}) {
+  return useQuery({ queryKey: queryKeys.expenses(filters), queryFn: () => fetchExpenses(filters) })
+}
+
+/** Invalida tutte le combinazioni di filtri: una spesa nuova cambia anche le liste filtrate. */
+export function useAddExpense() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AddExpenseInput) => addExpense(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+  })
+}
+
+export function useRemoveExpense() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => removeExpense(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['expenses'] }),
+  })
+}
+
+export function useMemory() {
+  return useQuery({ queryKey: queryKeys.memory, queryFn: fetchMemory })
+}
+
+export function useAddMemoryFact() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ content, category }: { content: string; category?: string }) => addMemoryFact(content, category),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memory }),
+  })
+}
+
+export function useRemoveMemoryFact() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => removeMemoryFact(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memory }),
   })
 }
 

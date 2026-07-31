@@ -1,4 +1,5 @@
 import type { AiToolDefinition } from "../../ai/types.js";
+import { remember, forgetByContent, listMemories } from "../memory/index.js";
 import { getDevices as getShellyDevices, toggleDevice as toggleShellyDevice } from "../shelly/index.js";
 import { getShutters, openShutter, closeShutter, stopShutter } from "../tahoma/index.js";
 import { logMeal, getTodayMeals } from "../food/index.js";
@@ -9,6 +10,16 @@ import { listItems, addItems, markItemChecked } from "../shoppingList/index.js";
 import { createMealPlan } from "../mealPlan/index.js";
 import { addHolding, removeHolding, getPortfolio } from "../investments/index.js";
 import { createPlan as createMarketingPlan, listPlans as listMarketingPlans, formatPlanForChat, parseLocalDay } from "../marketing/index.js";
+import {
+  createProject,
+  listProjects,
+  createProduct,
+  listProducts,
+  addProductNote,
+  assertProjectAccess,
+  assertProductAccess,
+} from "../projects/index.js";
+import { createTask, updateTask, listTasks, summarizeSchedule } from "../projects/gantt.js";
 
 export interface ToolContext {
   userId: string;
@@ -16,6 +27,43 @@ export interface ToolContext {
 }
 
 export const ASSISTANT_TOOLS: AiToolDefinition[] = [
+  {
+    name: "remember_about_me",
+    description:
+      "Memorizza un fatto stabile sull'utente (preferenza, vincolo, abitudine, allergia, obiettivo di lungo periodo) " +
+      "così da ricordarlo in tutte le conversazioni future. Usalo quando l'utente chiede esplicitamente di ricordare " +
+      "qualcosa, o quando emerge un fatto duraturo che cambierebbe le risposte future. Non usarlo per dettagli " +
+      "momentanei (cosa ha mangiato oggi, un allenamento singolo): quelli hanno i loro tool.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "Il fatto, in una frase breve e autonoma. Es: \"È vegetariano\"." },
+        category: {
+          type: "string",
+          description: 'Ambito, per raggruppare: es. "alimentazione", "allenamento", "preferenze", "salute".',
+        },
+      },
+      required: ["content"],
+    },
+  },
+  {
+    name: "forget_about_me",
+    description:
+      "Dimentica i fatti memorizzati che contengono il testo indicato. Usalo quando l'utente dice che qualcosa " +
+      "non è più vero o chiede di dimenticarlo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Testo contenuto nel fatto da dimenticare." },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "list_what_you_know_about_me",
+    description: "Elenca i fatti memorizzati sull'utente.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "list_shelly_devices",
     description: "Elenca le luci/prese Shelly di casa con il loro stato (online/offline, acceso/spento).",
@@ -218,14 +266,129 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
         tone: { type: "string", description: 'Tono di voce, es. "diretto e informale".' },
         objective: { type: "string", description: 'Cosa deve ottenere, es. "prenotazioni della lezione di prova".' },
         itemsPerWeek: { type: "number", description: "Quanti contenuti a settimana (default 3)." },
+        projectId: {
+          type: "string",
+          description:
+            "Progetto a cui legare il piano, da list_projects. Omettilo per un piano di marketing personale.",
+        },
       },
       required: ["brief", "channels", "periodStart", "periodEnd"],
     },
   },
   {
     name: "list_marketing_plans",
-    description: "Elenca i piani editoriali di marketing personali dell'utente con i contenuti previsti.",
+    description:
+      "Elenca i piani editoriali di marketing con i contenuti previsti. Senza projectId mostra quelli personali, con projectId quelli di un progetto.",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: { type: "string", description: "Id del progetto, da list_projects." } },
+    },
+  },
+  // Dei progetti l'assistente vede il lavoro (progetti, prodotti, Gantt, diario
+  // di prodotto) ma non i conti: le voci di ricavo e costo si leggono e si
+  // scrivono solo in dashboard, come il portafoglio investimenti e le spese.
+  {
+    name: "list_projects",
+    description:
+      "Elenca i progetti, divisi tra quelli del team e quelli personali dell'utente, con stato e numero di prodotti.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "create_project",
+    description: "Crea un progetto, del team (default) o personale.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: 'es. "Corso di pilates online"' },
+        description: { type: "string" },
+        scope: {
+          type: "string",
+          enum: ["team", "personal"],
+          description: '"team" lo rende visibile a tutta la famiglia, "personal" solo a chi lo crea.',
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "list_products",
+    description: "Elenca i prodotti di un progetto, con stato e avanzamento derivato dal loro Gantt.",
+    inputSchema: {
+      type: "object",
+      properties: { projectId: { type: "string", description: "Id del progetto, da list_projects." } },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "create_product",
+    description: "Aggiunge un prodotto a un progetto. Il Gantt e il diario del prodotto si riempiono dopo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Id del progetto, da list_projects." },
+        name: { type: "string" },
+        description: { type: "string" },
+        status: { type: "string", enum: ["idea", "building", "live", "archived"] },
+      },
+      required: ["projectId", "name"],
+    },
+  },
+  {
+    name: "list_product_tasks",
+    description: "Elenca i task del Gantt di un prodotto, con date, avanzamento e a chi sono assegnati.",
+    inputSchema: {
+      type: "object",
+      properties: { productId: { type: "string", description: "Id del prodotto, da list_products." } },
+      required: ["productId"],
+    },
+  },
+  {
+    name: "create_product_task",
+    description:
+      "Aggiunge un task al Gantt di un prodotto. Non assegna a nessuno: l'assegnazione ai membri si fa in dashboard.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        productId: { type: "string", description: "Id del prodotto, da list_products." },
+        name: { type: "string", description: 'es. "Registrare le lezioni"' },
+        startsAt: { type: "string", description: "Primo giorno del task, formato YYYY-MM-DD." },
+        endsAt: { type: "string", description: "Ultimo giorno del task, formato YYYY-MM-DD." },
+        notes: { type: "string" },
+        progress: { type: "number", description: "Percentuale 0-100, default 0." },
+        status: { type: "string", enum: ["todo", "in_progress", "done", "blocked"] },
+      },
+      required: ["productId", "name", "startsAt", "endsAt"],
+    },
+  },
+  {
+    name: "update_product_task",
+    description: "Aggiorna un task del Gantt: avanzamento, stato, nome o date.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Id del task, da list_product_tasks." },
+        name: { type: "string" },
+        progress: { type: "number", description: "Percentuale 0-100." },
+        status: { type: "string", enum: ["todo", "in_progress", "done", "blocked"] },
+        startsAt: { type: "string", description: "Formato YYYY-MM-DD." },
+        endsAt: { type: "string", description: "Formato YYYY-MM-DD." },
+      },
+      required: ["taskId"],
+    },
+  },
+  {
+    name: "add_product_note",
+    description:
+      "Aggiunge una voce al diario di prodotto: il ragionamento su cosa costruire e perche', distinto dai task del Gantt.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        productId: { type: "string", description: "Id del prodotto, da list_products." },
+        content: { type: "string" },
+        title: { type: "string" },
+      },
+      required: ["productId", "content"],
+    },
   },
 ];
 
@@ -329,14 +492,127 @@ export async function executeTool(name: string, input: any, ctx: ToolContext): P
         periodStart: parseLocalDay(input.periodStart),
         periodEnd: parseLocalDay(input.periodEnd, "end"),
         itemsPerWeek: input.itemsPerWeek,
+        projectId: input.projectId,
       });
       return `${formatPlanForChat(plan)}\n\nLe bozze sono nella sezione Marketing: da lì si approvano e si programmano.`;
     }
 
     case "list_marketing_plans": {
-      const plans = await listMarketingPlans(ctx.userId);
+      const plans = await listMarketingPlans(ctx.userId, input.projectId);
       if (plans.length === 0) return "Nessun piano editoriale salvato.";
       return plans.map(formatPlanForChat).join("\n\n");
+    }
+
+    case "list_projects": {
+      const { teamProjects, personalProjects } = await listProjects(ctx.teamId, ctx.userId);
+      if (teamProjects.length === 0 && personalProjects.length === 0) return "Nessun progetto.";
+      const format = (p: (typeof teamProjects)[number]) =>
+        `- ${p.name} (id: ${p.id}, stato: ${p.status}, ${p._count.products} prodotti)`;
+      const sections: string[] = [];
+      if (teamProjects.length > 0) sections.push(["Progetti del team:", ...teamProjects.map(format)].join("\n"));
+      if (personalProjects.length > 0) sections.push(["Progetti personali:", ...personalProjects.map(format)].join("\n"));
+      return sections.join("\n\n");
+    }
+
+    case "create_project": {
+      const project = await createProject({
+        userId: ctx.userId,
+        teamId: ctx.teamId,
+        name: input.name,
+        description: input.description,
+        scope: input.scope,
+      });
+      const who = project.scope === "team" ? "visibile a tutto il team" : "personale";
+      return `Progetto creato: ${project.name} (${who}, id: ${project.id})`;
+    }
+
+    case "list_products": {
+      // listProducts non controlla nulla da sola: l'id del progetto arriva dal
+      // modello, che potrebbe averlo inventato o ripescato da un'altra chat.
+      await assertProjectAccess(ctx.userId, ctx.teamId, input.projectId);
+      const products = await listProducts(input.projectId);
+      if (products.length === 0) return "Nessun prodotto in questo progetto.";
+      return products
+        .map((product) => {
+          const schedule = summarizeSchedule(product.tasks);
+          return `- ${product.name} (id: ${product.id}, stato: ${product.status}, ${schedule.progress}% su ${schedule.taskCount} task)`;
+        })
+        .join("\n");
+    }
+
+    case "create_product": {
+      const product = await createProduct(ctx.userId, ctx.teamId, input.projectId, {
+        name: input.name,
+        description: input.description,
+        status: input.status,
+      });
+      return `Prodotto creato: ${product.name} (id: ${product.id})`;
+    }
+
+    case "list_product_tasks": {
+      const tasks = await listTasks(ctx.userId, ctx.teamId, input.productId);
+      if (tasks.length === 0) return "Nessun task nel Gantt di questo prodotto.";
+      return tasks
+        .map((task) => {
+          const from = task.startsAt.toLocaleDateString("it-IT");
+          const to = task.endsAt.toLocaleDateString("it-IT");
+          const who = task.assignee ? `, ${task.assignee.displayName ?? task.assignee.email}` : "";
+          return `- ${task.name} (id: ${task.id}, ${from} → ${to}, ${task.progress}%, ${task.status}${who})`;
+        })
+        .join("\n");
+    }
+
+    case "create_product_task": {
+      const task = await createTask(ctx.userId, ctx.teamId, input.productId, {
+        name: input.name,
+        notes: input.notes,
+        startsAt: parseLocalDay(input.startsAt),
+        endsAt: parseLocalDay(input.endsAt, "end"),
+        progress: input.progress,
+        status: input.status,
+      });
+      return `Task aggiunto al Gantt: ${task.name} (id: ${task.id})`;
+    }
+
+    case "update_product_task": {
+      const task = await updateTask(ctx.userId, ctx.teamId, input.taskId, {
+        name: input.name,
+        progress: input.progress,
+        status: input.status,
+        startsAt: input.startsAt ? parseLocalDay(input.startsAt) : undefined,
+        endsAt: input.endsAt ? parseLocalDay(input.endsAt, "end") : undefined,
+      });
+      return `Task aggiornato: ${task.name} — ${task.progress}%, ${task.status}`;
+    }
+
+    case "add_product_note": {
+      const product = await assertProductAccess(ctx.userId, ctx.teamId, input.productId);
+      await addProductNote(ctx.userId, ctx.teamId, input.productId, {
+        title: input.title,
+        content: input.content,
+      });
+      return `Nota aggiunta al diario di ${product.name}.`;
+    }
+
+    case "remember_about_me": {
+      const saved = await remember({
+        userId: ctx.userId,
+        content: input.content,
+        category: input.category,
+        source: "assistant",
+      });
+      return `Memorizzato: "${saved.content}". Lo ricorderò anche nelle prossime conversazioni.`;
+    }
+
+    case "forget_about_me": {
+      const count = await forgetByContent(ctx.userId, input.text);
+      return count > 0 ? `Dimenticati ${count} fatti.` : "Non ho trovato nulla del genere da dimenticare.";
+    }
+
+    case "list_what_you_know_about_me": {
+      const memories = await listMemories(ctx.userId);
+      if (memories.length === 0) return "Non ho ancora memorizzato nulla su di te.";
+      return memories.map((m) => (m.category ? `- [${m.category}] ${m.content}` : `- ${m.content}`)).join("\n");
     }
 
     default:

@@ -22,6 +22,7 @@ model Team {
   calendarEvents    CalendarEvent[]
   workoutSessions   WorkoutSession[]
   shoppingListItems ShoppingListItem[]
+  projects          Project[]
 }
 
 model User {
@@ -47,14 +48,21 @@ model User {
   calendarEvents  CalendarEvent[]
   workoutSessions WorkoutSession[]
   holdings        Holding[]
+  expenses        Expense[]
   googleAccount   GoogleAccount?
   diaryEntries    DiaryEntry[]
   socialAccounts  SocialAccount[]
   socialPosts     SocialPost[]
   conversations   Conversation[]
+  memories        UserMemory[]
   trainingPlans   TrainingPlan[]
   nutritionPlans  NutritionPlan[]
   marketingPlans  MarketingPlan[]
+
+  projects            Project[]
+  assignedTasks       ProductTask[]
+  productNotes        ProductNote[]
+  projectTransactions ProjectTransaction[]
 }
 
 /**
@@ -141,6 +149,30 @@ model ConversationMessage {
 }
 
 /**
+ * Cosa l'assistente sa di te: preferenze, vincoli, abitudini che devono
+ * valere in tutte le conversazioni, non solo in quella in corso.
+ * Personale come diario e investimenti: sono fatti su una persona, non sul
+ * team, e finiscono nel prompt solo delle sue conversazioni. A differenza dei
+ * messaggi salvati questi vengono riletti a ogni turno, quindi restano fatti
+ * brevi e stabili, non appunti.
+ */
+model UserMemory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @db.ObjectId
+  content   String
+  // Libera (es. "alimentazione", "allenamento", "preferenze"): serve a
+  // raggruppare nella dashboard, non a filtrare il prompt.
+  category  String?
+  // "user" se l'hai scritto tu dal profilo, "assistant" se l'ha imparato
+  // parlando con te: mostrarlo rende chiaro perché l'assistente sa una cosa.
+  source    String   @default("assistant")
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/**
  * Diario personale: mai condiviso col team, nemmeno tramite l'assistente.
  */
 model DiaryEntry {
@@ -184,24 +216,47 @@ model Holding {
   createdAt DateTime @default(now())
 }
 
-model Meal {
+/**
+ * Spesa personale. Stessa scelta di Holding: i dati finanziari restano
+ * privati di chi li inserisce, quindi niente teamId, niente broadcast al
+ * team e nessun tool dell'assistente che li legga o li scriva.
+ * `spentAt` e' distinto da `createdAt`: le spese si registrano spesso in
+ * ritardo, e la data che conta per i totali e' quella in cui si e' speso.
+ */
+model Expense {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  team        Team     @relation(fields: [teamId], references: [id])
-  teamId      String   @db.ObjectId
   user        User     @relation(fields: [userId], references: [id])
   userId      String   @db.ObjectId
   description String
-  grams       Float?
-  photoPath   String?
-  calories    Float?
-  loggedAt    DateTime @default(now())
+  amount      Float // importo positivo, nella valuta della dashboard (EUR)
+  // Stringa libera come gli altri "enum" di questo schema: le categorie di
+  // spesa di una famiglia cambiano piu' spesso del codice.
+  category    String   @default("altro") // es. "casa", "spesa", "trasporti", "salute"
+  spentAt     DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, spentAt])
+}
+
+model Meal {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  team         Team     @relation(fields: [teamId], references: [id])
+  teamId       String   @db.ObjectId
+  user         User     @relation(fields: [userId], references: [id])
+  userId       String   @db.ObjectId
+  description  String
+  grams        Float?
+  photoPath    String?
+  calories     Float?
+  loggedAt     DateTime @default(now())
   // true per i pasti generati da un piano alimentare AI (ancora da consumare),
   // false per i pasti effettivamente registrati come mangiati.
-  planned     Boolean  @default(false)
+  planned      Boolean  @default(false)
   // Scheda alimentare e giorno della rotazione da cui questo pasto e' stato
   // materializzato (o che stava seguendo). Stessa scelta di WorkoutSession:
   // non e' una relation, il pasto sopravvive alla cancellazione della scheda.
-  planId       String? @db.ObjectId
+  planId       String?  @db.ObjectId
   planDayOrder Int?
 }
 
@@ -279,21 +334,21 @@ model CalendarEvent {
 }
 
 model WorkoutSession {
-  id        String            @id @default(auto()) @map("_id") @db.ObjectId
-  team      Team              @relation(fields: [teamId], references: [id])
-  teamId    String            @db.ObjectId
-  user      User              @relation(fields: [userId], references: [id])
-  userId    String            @db.ObjectId
-  loggedAt  DateTime          @default(now())
-  exercises WorkoutExercise[]
+  id           String            @id @default(auto()) @map("_id") @db.ObjectId
+  team         Team              @relation(fields: [teamId], references: [id])
+  teamId       String            @db.ObjectId
+  user         User              @relation(fields: [userId], references: [id])
+  userId       String            @db.ObjectId
+  loggedAt     DateTime          @default(now())
+  exercises    WorkoutExercise[]
   // Scheda e giorno della rotazione a cui questa sessione si riferisce, se
   // l'utente si stava allenando seguendo una scheda. Non e' una relation:
   // la sessione resta valida (e leggibile dal team) anche se la scheda,
   // che e' personale, viene cancellata. Sono anche l'unico stato da cui si
   // ricava a che punto della rotazione si e' arrivati: il "giorno di oggi"
   // e' quello dopo l'ultimo registrato, senza contatori da tenere allineati.
-  planId        String?       @db.ObjectId
-  planDayOrder  Int?
+  planId       String?           @db.ObjectId
+  planDayOrder Int?
 
   @@index([userId, planId, loggedAt])
 }
@@ -309,11 +364,9 @@ type WorkoutExercise {
 /**
  * Scheda di allenamento personale: il programma da seguire, distinto dalle
  * WorkoutSession che registrano cosa e' stato davvero fatto.
- *
  * Personale e non condivisa col team (come diario e investimenti): una scheda
  * dice cosa uno non riesce ancora a sollevare, e non e' un dato che ha senso
  * mettere in bacheca. Restano condivise le sessioni registrate.
- *
  * Validita': una sola scheda attiva per volta, quindi le finestre
  * [validFrom, validTo] di uno stesso utente non si sovrappongono mai —
  * vincolo applicato nel modulo, MongoDB non puo' esprimerlo. validTo null
@@ -354,8 +407,8 @@ type TrainingPlanDay {
 }
 
 type TrainingPlanExercise {
-  name String
-  sets Int?
+  name        String
+  sets        Int?
   // Stringa e non Int: una scheda prescrive spesso un intervallo ("8-10") o
   // un modo di finire la serie ("cedimento"), non un numero secco. Il numero
   // secco resta in WorkoutExercise.reps, che registra cosa si e' fatto.
@@ -370,7 +423,6 @@ type TrainingPlanExercise {
  * finestra di validita' senza sovrapposizioni e giorni ordinati in rotazione
  * (non lunedi'-domenica), cosi' le due si spiegano e si gestiscono allo
  * stesso modo.
- *
  * Distinta dai Meal con planned=true, che restano i pasti di una singola
  * giornata: la scheda e' il modello ricorrente da cui quei pasti si generano.
  */
@@ -408,24 +460,22 @@ type NutritionPlanMeal {
 
 /**
  * Piano editoriale di marketing generato dall'AI a partire da un brief.
- *
  * Personale e non condiviso col team (come diario, investimenti e schede): il
  * marketing e' un'attivita' di chi lo fa, non della famiglia, quindi non passa
  * ne' dal riepilogo del team ne' dal broadcast WebSocket.
- *
  * Il brief resta salvato sul piano e non solo nel prompt: rigenerare o
  * prolungare un piano deve poter ripartire dallo stesso contesto (tono,
  * pubblico, obiettivo) senza riscriverlo a mano.
  */
 model MarketingPlan {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  user      User     @relation(fields: [userId], references: [id])
-  userId    String   @db.ObjectId
-  name      String // es. "Lancio corso autunnale"
-  brief     String // la richiesta in parole dell'utente, da cui l'AI ha generato il piano
-  audience  String? // a chi si parla, es. "genitori 30-45 anni"
-  tone      String? // tono di voce, es. "diretto e informale"
-  objective String? // cosa deve ottenere, es. "iscrizioni alla newsletter"
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String   @db.ObjectId
+  name        String // es. "Lancio corso autunnale"
+  brief       String // la richiesta in parole dell'utente, da cui l'AI ha generato il piano
+  audience    String? // a chi si parla, es. "genitori 30-45 anni"
+  tone        String? // tono di voce, es. "diretto e informale"
+  objective   String? // cosa deve ottenere, es. "iscrizioni alla newsletter"
   // Canali richiesti nel brief. Stringhe libere come gli altri "enum" di questo
   // schema: i canali su cui si pubblica cambiano piu' spesso del codice.
   channels    String[]
@@ -433,9 +483,18 @@ model MarketingPlan {
   periodEnd   DateTime
   createdAt   DateTime @default(now())
 
+  // Progetto a cui il piano appartiene, se non e' marketing personale. E'
+  // l'unica cosa che sposta la visibilita' del piano: finche' e' null vale
+  // quanto scritto sopra (lo vede solo chi l'ha creato), mentre agganciato a un
+  // progetto di team il piano lo leggono tutti i membri. Il marketing di un
+  // progetto condiviso e' lavoro condiviso, non un fatto privato.
+  project   Project? @relation(fields: [projectId], references: [id])
+  projectId String?  @db.ObjectId
+
   items MarketingPlanItem[]
 
   @@index([userId, periodStart])
+  @@index([projectId, periodStart])
 }
 
 /**
@@ -445,9 +504,9 @@ model MarketingPlan {
  * quindi ognuno ha bisogno di un id proprio.
  */
 model MarketingPlanItem {
-  id     String        @id @default(auto()) @map("_id") @db.ObjectId
-  plan   MarketingPlan @relation(fields: [planId], references: [id])
-  planId String        @db.ObjectId
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  plan         MarketingPlan @relation(fields: [planId], references: [id])
+  planId       String        @db.ObjectId
   // Quando pubblicare. Calcolato dal server (inizio periodo + giorno + ora
   // proposti dal modello) e non preso come data dal modello: i modelli
   // sbagliano l'aritmetica sul calendario, sommare giorni no.
@@ -457,11 +516,139 @@ model MarketingPlanItem {
   title        String // il tema del contenuto, in una riga
   copy         String // bozza del testo pubblicabile
   hashtags     String[]
-  status       String   @default("idea") // "idea" | "approved" | "discarded"
+  status       String        @default("idea") // "idea" | "approved" | "discarded"
   // Post social creato da questo contenuto, se e' stato programmato dalla
   // dashboard. Non e' una relation: il post vive di vita propria e sopravvive
   // alla cancellazione del piano, come planId su WorkoutSession.
-  socialPostId String?  @db.ObjectId
+  socialPostId String?       @db.ObjectId
 
   @@index([planId, scheduledFor])
+}
+
+/**
+ * Un progetto: il contenitore del lavoro, guardato da tre lati — i prodotti che
+ * ci stai costruendo dentro, il marketing con cui li racconti, i conti che
+ * fanno.
+ * Puo' essere del team o della singola persona, con la stessa regola di Goal:
+ * `scope = "team"` lo rende visibile a tutti i membri, `"personal"` solo a chi
+ * l'ha creato. `teamId` c'e' comunque anche sui progetti personali, perche' e'
+ * da li' che si ricava chi puo' vederli se un giorno lo scope cambia.
+ */
+model Project {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  team        Team     @relation(fields: [teamId], references: [id])
+  teamId      String   @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String   @db.ObjectId
+  name        String
+  description String?
+  scope       String   @default("team") // "personal" | "team"
+  status      String   @default("active") // "active" | "paused" | "done" | "archived"
+  createdAt   DateTime @default(now())
+
+  products       Product[]
+  marketingPlans MarketingPlan[]
+  transactions   ProjectTransaction[]
+
+  @@index([teamId, scope])
+  @@index([userId, scope])
+}
+
+/**
+ * Un prodotto del progetto. E' un contenitore: da solo dice poco, quello che
+ * conta e' cosa ha dentro — il Gantt di come costruirlo (project manager e dev)
+ * e il diario di come lo si vuole costruire (product manager).
+ */
+model Product {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String   @db.ObjectId
+  name        String
+  description String?
+  status      String   @default("idea") // "idea" | "building" | "live" | "archived"
+  createdAt   DateTime @default(now())
+
+  tasks        ProductTask[]
+  notes        ProductNote[]
+  transactions ProjectTransaction[]
+
+  @@index([projectId, createdAt])
+}
+
+/**
+ * Una barra del Gantt. Modello a se' e non composite type (al contrario dei
+ * giorni delle schede palestra/alimentari): un task si aggiorna da solo e
+ * spesso — spostare la percentuale di avanzamento e' il gesto piu' frequente
+ * della sezione — e va indicizzato per data per disegnare la timeline.
+ */
+model ProductTask {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  product   Product  @relation(fields: [productId], references: [id])
+  productId String   @db.ObjectId
+  name      String
+  notes     String?
+  startsAt  DateTime
+  endsAt    DateTime
+  /// 0..100. Tenuta a mano e non dedotta dallo stato: "in corso" non dice se sei al 10% o al 90%.
+  progress  Int      @default(0)
+  status    String   @default("todo") // "todo" | "in_progress" | "done" | "blocked"
+
+  // A chi e' assegnato, tra i membri del team. Opzionale: nei progetti
+  // personali non c'e' nessuno a cui assegnare.
+  assignee   User?   @relation(fields: [assigneeId], references: [id])
+  assigneeId String? @db.ObjectId
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, startsAt])
+}
+
+/**
+ * Una voce del diario di prodotto: il ragionamento su cosa costruire e perche',
+ * distinto dal Gantt che dice quando.
+ * Non e' il DiaryEntry personale nonostante il nome: segue la visibilita' del
+ * progetto, quindi su un progetto di team lo leggono tutti i membri. E' un
+ * artefatto di lavoro, non un fatto intimo.
+ */
+model ProductNote {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  product   Product  @relation(fields: [productId], references: [id])
+  productId String   @db.ObjectId
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String   @db.ObjectId
+  title     String?
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([productId, createdAt])
+}
+
+/**
+ * Una voce di ricavo o di costo del progetto.
+ * Non esposta ai tool dell'assistente AI: stessa scelta gia' fatta per Holding
+ * e Expense, i numeri di quanto una cosa rende si guardano in dashboard.
+ * `productId` e' opzionale perche' non tutto si attribuisce: l'hosting e' del
+ * progetto, una vendita e' di un prodotto preciso. Quando c'e', il margine per
+ * prodotto si calcola senza dover modellare vendite e ordini.
+ */
+model ProjectTransaction {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String   @db.ObjectId
+  product   Product? @relation(fields: [productId], references: [id])
+  productId String?  @db.ObjectId
+  /// Chi l'ha registrata: su un progetto di team le voci le inserisce chiunque.
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @db.ObjectId
+
+  type        String // "revenue" | "cost"
+  /// Sempre positivo: il segno lo da' `type`, cosi' non esistono due modi di scrivere un costo.
+  amount      Float
+  description String
+  category    String? // es. "hosting", "ads", "vendita" — stringa libera
+  /// Quando e' successo, distinto da createdAt: le voci si registrano in ritardo.
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, occurredAt])
 }

@@ -1,6 +1,7 @@
 import { getAiProvider } from "../../ai/client.js";
 import type { AiContentPart, AiMessage, AiToolResult } from "../../ai/types.js";
 import { ASSISTANT_TOOLS, executeTool, type ToolContext } from "./tools.js";
+import { getMemoryForPrompt } from "../memory/index.js";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -20,7 +21,15 @@ const SYSTEM_PROMPT =
   "Rispondi sempre in italiano, in modo conciso. Usa i tool a disposizione per eseguire azioni reali " +
   "(accendere luci, registrare pasti/allenamenti, creare obiettivi, ecc.) o per recuperare dati aggiornati " +
   "(stato dei device, pasti di oggi, obiettivi attivi...): non inventare mai stati o dati che un tool potrebbe fornirti. " +
-  "Se l'utente chiede qualcosa di ambiguo, chiedi un chiarimento invece di indovinare un'azione irreversibile.";
+  "Se l'utente chiede qualcosa di ambiguo, chiedi un chiarimento invece di indovinare un'azione irreversibile. " +
+  "Quando l'utente ti dice qualcosa di stabile su di sé (preferenze, vincoli, allergie, abitudini) memorizzalo con " +
+  "remember_about_me, così lo ricorderai anche nelle prossime conversazioni.";
+
+/** I fatti memorizzati vanno in coda al prompt: valgono per tutte le conversazioni di quella persona. */
+function buildSystemPrompt(memory: string): string {
+  if (!memory) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}\n\nQuello che sai già di questa persona:\n${memory}`;
+}
 
 const MAX_TOOL_ITERATIONS = 6;
 
@@ -35,6 +44,7 @@ const MAX_TOOL_ITERATIONS = 6;
 export async function chat(ctx: ToolContext, history: ChatMessage[]): Promise<{ reply: string; toolCalls: ToolCallLog[] }> {
   const provider = getAiProvider();
   const toolCalls: ToolCallLog[] = [];
+  const system = buildSystemPrompt(await getMemoryForPrompt(ctx.userId));
 
   const messages: AiMessage[] = history.map((m) =>
     m.role === "user" ? { role: "user", content: m.content } : { role: "assistant", text: asText(m.content), toolCalls: [] },
@@ -42,7 +52,7 @@ export async function chat(ctx: ToolContext, history: ChatMessage[]): Promise<{ 
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const turn = await provider.complete({
-      system: SYSTEM_PROMPT,
+      system,
       tools: ASSISTANT_TOOLS,
       maxTokens: 1500,
       messages,

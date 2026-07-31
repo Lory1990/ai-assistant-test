@@ -226,6 +226,59 @@ export function removeHolding(id: string): Promise<{ ok: boolean }> {
   return authorizedFetch(`/api/investments/${id}`, { method: "DELETE" });
 }
 
+// --- Spese -------------------------------------------------------------------
+// Personali come il portafoglio: le rotte non prendono mai un teamId.
+
+/** Categorie proposte in dashboard; la colonna resta una stringa libera. */
+export const EXPENSE_CATEGORIES = ['casa', 'spesa', 'trasporti', 'salute', 'svago', 'abbonamenti', 'altro'] as const
+
+export interface Expense {
+  id: string;
+  description: string;
+  amount: number;
+  category: string;
+  spentAt: string;
+  notes: string | null;
+}
+
+export interface ExpensesResponse {
+  expenses: Expense[];
+  /** Totali calcolati dal server sulle spese elencate, filtri compresi. */
+  total: number;
+  byCategory: { category: string; total: number }[];
+}
+
+export interface ExpenseFilters {
+  category?: string;
+  from?: string;
+  to?: string;
+}
+
+export function fetchExpenses(filters: ExpenseFilters = {}): Promise<ExpensesResponse> {
+  const params = new URLSearchParams()
+  if (filters.category) params.set("category", filters.category)
+  if (filters.from) params.set("from", filters.from)
+  if (filters.to) params.set("to", filters.to)
+  const query = params.toString()
+  return authorizedFetch<ExpensesResponse>(`/api/expenses${query ? `?${query}` : ""}`)
+}
+
+export interface AddExpenseInput {
+  description: string;
+  amount: number;
+  category?: string;
+  spentAt?: string;
+  notes?: string;
+}
+
+export function addExpense(input: AddExpenseInput): Promise<Expense> {
+  return authorizedFetch("/api/expenses", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function removeExpense(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/expenses/${id}`, { method: "DELETE" });
+}
+
 export interface GoogleStatusResponse {
   connected: boolean;
   email?: string;
@@ -552,4 +605,237 @@ export function deleteNutritionPlan(id: string): Promise<{ ok: boolean }> {
 
 export function applyNutritionToday(): Promise<{ created: number; alreadyApplied: boolean }> {
   return authorizedFetch("/api/plans/nutrition/today/apply", { method: "POST" });
+}
+
+export interface MemoryFact {
+  id: string;
+  content: string;
+  category: string | null;
+  /** "assistant" se l'ha imparato parlando con te, "user" se l'hai scritto tu. */
+  source: 'assistant' | 'user';
+  createdAt: string;
+}
+
+export function fetchMemory(): Promise<MemoryFact[]> {
+  return authorizedFetch<MemoryFact[]>("/api/memory");
+}
+
+export function addMemoryFact(content: string, category?: string): Promise<MemoryFact> {
+  return authorizedFetch("/api/memory", { method: "POST", body: JSON.stringify({ content, category }) });
+}
+
+export function removeMemoryFact(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/memory/${id}`, { method: "DELETE" });
+}
+
+// --- Progetti -------------------------------------------------------------
+
+export type ProjectScope = 'personal' | 'team'
+export type ProjectStatus = 'active' | 'paused' | 'done' | 'archived'
+export type ProductStatus = 'idea' | 'building' | 'live' | 'archived'
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'blocked'
+export type TransactionType = 'revenue' | 'cost'
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: ProjectScope;
+  status: ProjectStatus;
+  createdAt: string;
+  createdBy: string | null;
+  productCount: number;
+}
+
+export interface ProjectsResponse {
+  teamProjects: Project[];
+  personalProjects: Project[];
+}
+
+/** Riassunto del Gantt di un prodotto, calcolato dal server. */
+export interface ProductSchedule {
+  startsAt: string | null;
+  endsAt: string | null;
+  progress: number;
+  taskCount: number;
+}
+
+export interface Product {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  status: ProductStatus;
+  createdAt: string;
+  noteCount: number;
+  schedule: ProductSchedule;
+}
+
+export interface ProductTask {
+  id: string;
+  productId: string;
+  name: string;
+  notes: string | null;
+  startsAt: string;
+  endsAt: string;
+  progress: number;
+  status: TaskStatus;
+  assigneeId: string | null;
+  assigneeName: string | null;
+}
+
+export interface ProductNote {
+  id: string;
+  title: string | null;
+  content: string;
+  createdAt: string;
+  author: string | null;
+}
+
+export interface ProductDetail {
+  product: Omit<Product, 'noteCount' | 'schedule'>;
+  project: { id: string; name: string; scope: ProjectScope };
+  tasks: ProductTask[];
+  notes: ProductNote[];
+  schedule: ProductSchedule;
+}
+
+export interface TeamMember {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+}
+
+export interface ProjectTransaction {
+  id: string;
+  projectId: string;
+  productId: string | null;
+  type: TransactionType;
+  amount: number;
+  description: string;
+  category: string | null;
+  occurredAt: string;
+  product: { id: string; name: string } | null;
+}
+
+export interface EconomicsTotals {
+  revenue: number;
+  cost: number;
+  margin: number;
+}
+
+export interface ProjectEconomics extends EconomicsTotals {
+  byProduct: (EconomicsTotals & { productId: string | null; productName: string | null })[];
+  transactionCount: number;
+}
+
+export function fetchProjects(): Promise<ProjectsResponse> {
+  return authorizedFetch<ProjectsResponse>("/api/projects");
+}
+
+export interface CreateProjectInput {
+  name: string;
+  description?: string;
+  scope?: ProjectScope;
+}
+
+export function createProject(input: CreateProjectInput): Promise<Project> {
+  return authorizedFetch("/api/projects", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function fetchProject(id: string): Promise<{ project: Project; products: Product[] }> {
+  return authorizedFetch(`/api/projects/${id}`);
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string | null;
+  scope?: ProjectScope;
+  status?: ProjectStatus;
+}
+
+export function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
+  return authorizedFetch(`/api/projects/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteProject(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/projects/${id}`, { method: "DELETE" });
+}
+
+export function fetchTeamMembers(): Promise<TeamMember[]> {
+  return authorizedFetch<TeamMember[]>("/api/projects/team-members");
+}
+
+export interface ProductInput {
+  name?: string;
+  description?: string | null;
+  status?: ProductStatus;
+}
+
+export function createProduct(projectId: string, input: ProductInput): Promise<Product> {
+  return authorizedFetch(`/api/projects/${projectId}/products`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function fetchProduct(id: string): Promise<ProductDetail> {
+  return authorizedFetch<ProductDetail>(`/api/products/${id}`);
+}
+
+export function updateProduct(id: string, input: ProductInput): Promise<Product> {
+  return authorizedFetch(`/api/products/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteProduct(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/products/${id}`, { method: "DELETE" });
+}
+
+export interface TaskInput {
+  name?: string;
+  notes?: string | null;
+  /** ISO: il server accetta qualsiasi data valida, la dashboard manda il giorno scelto. */
+  startsAt?: string;
+  endsAt?: string;
+  progress?: number;
+  status?: TaskStatus;
+  assigneeId?: string | null;
+}
+
+export function createProductTask(productId: string, input: TaskInput): Promise<ProductTask> {
+  return authorizedFetch(`/api/products/${productId}/tasks`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateProductTask(id: string, input: TaskInput): Promise<ProductTask> {
+  return authorizedFetch(`/api/product-tasks/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteProductTask(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/product-tasks/${id}`, { method: "DELETE" });
+}
+
+export function addProductNote(productId: string, input: { title?: string; content: string }): Promise<ProductNote> {
+  return authorizedFetch(`/api/products/${productId}/notes`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteProductNote(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/product-notes/${id}`, { method: "DELETE" });
+}
+
+export function fetchProjectEconomics(projectId: string): Promise<ProjectEconomics> {
+  return authorizedFetch<ProjectEconomics>(`/api/projects/${projectId}/economics`);
+}
+
+export interface AddTransactionInput {
+  type: TransactionType;
+  amount: number;
+  description: string;
+  category?: string;
+  occurredAt?: string;
+  productId?: string;
+}
+
+export function addProjectTransaction(projectId: string, input: AddTransactionInput): Promise<ProjectTransaction> {
+  return authorizedFetch(`/api/projects/${projectId}/economics`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteProjectTransaction(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/economics/${id}`, { method: "DELETE" });
 }

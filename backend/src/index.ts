@@ -14,12 +14,15 @@ import { registerTeamRoutes } from "./api/team.js";
 import { registerHomeRoutes } from "./api/home.js";
 import { registerAssistantRoutes } from "./api/assistant.js";
 import { registerInvestmentsRoutes } from "./api/investments.js";
+import { registerExpensesRoutes } from "./api/expenses.js";
 import { registerWebSocket } from "./ws/index.js";
 import { registerGoogleAuthRoutes } from "./api/googleAuth.js";
 import { registerDiaryRoutes } from "./api/diary.js";
+import { registerMemoryRoutes } from "./api/memory.js";
 import { registerSocialRoutes } from "./api/social.js";
 import { registerPlanRoutes } from "./api/plans.js";
 import { registerMarketingRoutes } from "./api/marketing.js";
+import { registerProjectRoutes } from "./api/projects.js";
 import { ensureSparseUniqueIndexes } from "./db/ensureIndexes.js";
 
 async function main() {
@@ -45,11 +48,14 @@ async function main() {
   registerHomeRoutes(app);
   registerAssistantRoutes(app);
   registerInvestmentsRoutes(app);
+  registerExpensesRoutes(app);
   registerGoogleAuthRoutes(app);
   registerDiaryRoutes(app);
+  registerMemoryRoutes(app);
   registerSocialRoutes(app);
   registerPlanRoutes(app);
   registerMarketingRoutes(app);
+  registerProjectRoutes(app);
   await registerWebSocket(app);
 
   const port = Number(process.env.PORT ?? 3000);
