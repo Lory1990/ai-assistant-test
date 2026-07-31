@@ -18,11 +18,16 @@ import { listItems, markItemChecked } from "../modules/shoppingList/index.js";
 import { addHolding, removeHolding, getPortfolio } from "../modules/investments/index.js";
 import { addEntry as addDiaryEntry, listEntries as listDiaryEntries } from "../modules/diary/index.js";
 import { chat, type ChatMessage } from "../modules/assistant/index.js";
+import {
+  appendMessage,
+  archiveActiveConversation,
+  getContextMessages,
+  getOrCreateActiveConversation,
+} from "../modules/conversations/index.js";
 import { transcribeAudio } from "../modules/assistant/transcribe.js";
 import { broadcastToTeam } from "../ws/index.js";
 
 const LINK_CODE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 giorni: mostrato una volta al primo contatto
-const MAX_HISTORY_MESSAGES = 20;
 
 export function createBot(): Bot {
   if (!env.telegramBotToken) {
@@ -31,17 +36,47 @@ export function createBot(): Bot {
 
   const bot = new Bot(env.telegramBotToken);
 
-  // Cronologia conversazione in memoria per utente, cosi' l'assistente ha
-  // contesto tra un messaggio e l'altro. Si perde a un riavvio del processo:
-  // accettabile per un bot personale, evita di dover persistere le chat.
-  const conversations = new Map<string, ChatMessage[]>();
+  /**
+   * Un turno completo con l'assistente, persistito: recupera la conversazione
+   * attiva del canale telegram, salva il messaggio dell'utente, chiama il
+   * modello con la history salvata e salva la risposta.
+   *
+   * `promptContent` puo' contenere un'immagine (foto in visione), mentre
+   * `storedContent` e' cio' che finisce a DB e nel contesto dei turni
+   * successivi: la foto non viene ripassata al modello ogni volta, la sua
+   * descrizione vive nella risposta dell'assistente.
+   */
+  async function runAssistantTurn(params: {
+    userId: string;
+    teamId: string;
+    promptContent: ChatMessage["content"];
+    storedContent: string;
+    photoPath?: string;
+  }) {
+    const conversation = await getOrCreateActiveConversation(params.userId, "telegram", params.storedContent);
+    await appendMessage({
+      conversationId: conversation.id,
+      role: "user",
+      content: params.storedContent,
+      photoPath: params.photoPath,
+    });
 
-  function pushHistory(telegramId: string, message: ChatMessage): ChatMessage[] {
-    const history = conversations.get(telegramId) ?? [];
-    history.push(message);
-    while (history.length > MAX_HISTORY_MESSAGES) history.shift();
-    conversations.set(telegramId, history);
-    return history;
+    const previous = await getContextMessages(conversation.id);
+    // getContextMessages restituisce anche il messaggio appena salvato in forma
+    // testuale: per questo turno lo sostituiamo con la versione che contiene
+    // l'immagine, quando c'e'.
+    const history: ChatMessage[] = [...previous.slice(0, -1), { role: "user", content: params.promptContent }];
+
+    const result = await chat({ userId: params.userId, teamId: params.teamId }, history);
+
+    await appendMessage({
+      conversationId: conversation.id,
+      role: "assistant",
+      content: result.reply,
+      toolNames: result.toolCalls.map((t) => t.name),
+    });
+
+    return result;
   }
 
   /**
@@ -118,7 +153,21 @@ export function createBot(): Bot {
         "Calendario: /importante <eventId> · /eventi\n\n" +
         "Musica: /suona <brano>\n\n" +
         "Investimenti (personali): /investimenti · /investiaggiungi <simbolo> <quantità> [prezzo] · /investirimuovi <simbolo>\n\n" +
-        "Diario personale (mai visto dall'IA): /diario <testo> · /diarioultimi",
+        "Diario personale (mai visto dall'IA): /diario <testo> · /diarioultimi\n\n" +
+        "Conversazione: /nuovachat — chiude quella in corso e ne apre una nuova (lo storico resta salvato)",
+    );
+  });
+
+  // Le conversazioni sono salvate e riprese automaticamente: questo serve a
+  // chiudere il thread corrente quando si cambia argomento, cosi' il contesto
+  // vecchio non pesa sulle risposte successive.
+  bot.command("nuovachat", async (ctx) => {
+    const user = await getOrCreateUser(String(ctx.from!.id));
+    const closed = await archiveActiveConversation(user.id, "telegram");
+    await ctx.reply(
+      closed
+        ? "Conversazione chiusa: la trovi nello storico. Il prossimo messaggio ne apre una nuova."
+        : "Non c'era nessuna conversazione in corso: scrivimi quando vuoi.",
     );
   });
 
@@ -444,19 +493,22 @@ export function createBot(): Bot {
       const buffer = await downloadTelegramFile(photo.file_id);
       const photoPath = await savePhoto(buffer, `${Date.now()}-${photo.file_id}.jpg`);
 
-      const content: AiContentPart[] = [
+      const caption =
+        ctx.message.caption?.trim() ||
+        "Ecco una foto. Se è cibo, registrala tra i pasti di oggi stimando grammatura e calorie; altrimenti dimmi cosa vedi o agisci di conseguenza.";
+
+      const promptContent: AiContentPart[] = [
         { type: "image", mediaType: "image/jpeg", base64: buffer.toString("base64") },
-        {
-          type: "text",
-          text:
-            ctx.message.caption?.trim() ||
-            "Ecco una foto. Se è cibo, registrala tra i pasti di oggi stimando grammatura e calorie; altrimenti dimmi cosa vedi o agisci di conseguenza.",
-        },
+        { type: "text", text: caption },
       ];
 
-      const history = pushHistory(telegramId, { role: "user", content });
-      const result = await chat({ userId: user.id, teamId: user.teamId }, history);
-      pushHistory(telegramId, { role: "assistant", content: result.reply });
+      const result = await runAssistantTurn({
+        userId: user.id,
+        teamId: user.teamId,
+        promptContent,
+        storedContent: `[foto] ${caption}`,
+        photoPath,
+      });
 
       if (result.toolCalls.some((t) => t.name === "log_meal")) {
         await attachPhotoToLatestMeal(user.id, photoPath).catch(() => {});
@@ -479,9 +531,12 @@ export function createBot(): Bot {
       const buffer = await downloadTelegramFile(ctx.message.voice.file_id);
       const text = await transcribeAudio(buffer, "voice.ogg");
 
-      const history = pushHistory(telegramId, { role: "user", content: text });
-      const result = await chat({ userId: user.id, teamId: user.teamId }, history);
-      pushHistory(telegramId, { role: "assistant", content: result.reply });
+      const result = await runAssistantTurn({
+        userId: user.id,
+        teamId: user.teamId,
+        promptContent: text,
+        storedContent: text,
+      });
       if (result.toolCalls.length > 0) {
         broadcastToTeam(user.teamId, { type: "data-updated", reason: "assistant-tool-call" });
       }
@@ -497,11 +552,14 @@ export function createBot(): Bot {
   bot.on("message:text", async (ctx) => {
     const telegramId = String(ctx.from!.id);
     const user = await getOrCreateUser(telegramId);
-    const history = pushHistory(telegramId, { role: "user", content: ctx.message.text });
 
     try {
-      const result = await chat({ userId: user.id, teamId: user.teamId }, history);
-      pushHistory(telegramId, { role: "assistant", content: result.reply });
+      const result = await runAssistantTurn({
+        userId: user.id,
+        teamId: user.teamId,
+        promptContent: ctx.message.text,
+        storedContent: ctx.message.text,
+      });
       if (result.toolCalls.length > 0) {
         broadcastToTeam(user.teamId, { type: "data-updated", reason: "assistant-tool-call" });
       }

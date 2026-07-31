@@ -16,6 +16,9 @@ import {
   addHolding,
   removeHolding,
   sendChatMessage,
+  fetchConversations,
+  fetchConversation,
+  deleteConversation,
   fetchGoogleStatus,
   requestGoogleConnectUrl,
   disconnectGoogle,
@@ -31,7 +34,6 @@ import {
   uploadSocialMedia,
   type CreateGoalInput,
   type AddHoldingInput,
-  type ChatMessage,
   type SchedulePostInput,
 } from './api/client'
 
@@ -44,6 +46,8 @@ export const queryKeys = {
   portfolio: ['portfolio'] as const,
   googleStatus: ['google-status'] as const,
   diary: ['diary'] as const,
+  conversations: ['conversations'] as const,
+  conversation: (id: string) => ['conversation', id] as const,
   socialAccounts: ['social-accounts'] as const,
   socialPosts: ['social-posts'] as const,
 }
@@ -137,8 +141,36 @@ export function useRemoveHolding() {
   })
 }
 
+export function useConversations() {
+  return useQuery({ queryKey: queryKeys.conversations, queryFn: fetchConversations })
+}
+
+export function useConversation(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.conversation(id ?? ''),
+    queryFn: () => fetchConversation(id!),
+    enabled: id !== null,
+  })
+}
+
 export function useSendChatMessage() {
-  return useMutation({ mutationFn: (messages: ChatMessage[]) => sendChatMessage(messages) })
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { conversationId?: string; message: string }) => sendChatMessage(input),
+    onSuccess: (res) => {
+      // I messaggi salvati e l'ordine della lista sono cambiati entrambi.
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversation(res.conversationId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations })
+    },
+  })
+}
+
+export function useDeleteConversation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteConversation(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
+  })
 }
 
 export function useGoogleStatus() {

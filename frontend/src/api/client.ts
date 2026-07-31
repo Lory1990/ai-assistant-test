@@ -155,10 +155,41 @@ export interface ChatToolCall {
 export interface ChatResponse {
   reply: string;
   toolCalls: ChatToolCall[];
+  /** Utile al primo messaggio, quando la conversazione la crea il server. */
+  conversationId: string;
 }
 
-export function sendChatMessage(messages: ChatMessage[]): Promise<ChatResponse> {
-  return authorizedFetch("/api/assistant/chat", { method: "POST", body: JSON.stringify({ messages }) });
+export interface Conversation {
+  id: string;
+  channel: "web" | "telegram";
+  title: string;
+  createdAt: string;
+  lastMessageAt: string;
+}
+
+export interface StoredMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  toolNames: string[];
+  createdAt: string;
+}
+
+export function fetchConversations(): Promise<Conversation[]> {
+  return authorizedFetch<Conversation[]>("/api/conversations");
+}
+
+export function fetchConversation(id: string): Promise<{ conversation: Conversation; messages: StoredMessage[] }> {
+  return authorizedFetch(`/api/conversations/${id}`);
+}
+
+export function deleteConversation(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/conversations/${id}`, { method: "DELETE" });
+}
+
+/** Manda solo il messaggio nuovo: la history la ricostruisce il server da quella salvata. */
+export function sendChatMessage(input: { conversationId?: string; message: string }): Promise<ChatResponse> {
+  return authorizedFetch("/api/assistant/chat", { method: "POST", body: JSON.stringify(input) });
 }
 
 export interface Holding {
