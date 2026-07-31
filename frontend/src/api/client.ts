@@ -313,6 +313,72 @@ export function cancelSocialPost(id: string): Promise<{ ok: boolean }> {
   return authorizedFetch(`/api/social/posts/${id}`, { method: "DELETE" });
 }
 
+export type MarketingItemStatus = "idea" | "approved" | "discarded";
+
+export interface MarketingPlanItem {
+  id: string;
+  scheduledFor: string;
+  channel: string;
+  format: string;
+  title: string;
+  copy: string;
+  hashtags: string[];
+  status: MarketingItemStatus;
+  socialPostId: string | null;
+}
+
+export interface MarketingPlan {
+  id: string;
+  name: string;
+  brief: string;
+  audience: string | null;
+  tone: string | null;
+  objective: string | null;
+  channels: string[];
+  periodStart: string;
+  periodEnd: string;
+  createdAt: string;
+  items: MarketingPlanItem[];
+}
+
+export interface CreateMarketingPlanInput {
+  name?: string;
+  brief: string;
+  audience?: string;
+  tone?: string;
+  objective?: string;
+  channels: string[];
+  periodStart: string;
+  periodEnd: string;
+  itemsPerWeek?: number;
+}
+
+export function fetchMarketingPlans(): Promise<MarketingPlan[]> {
+  return authorizedFetch<MarketingPlan[]>("/api/marketing/plans");
+}
+
+export function createMarketingPlan(input: CreateMarketingPlanInput): Promise<MarketingPlan> {
+  return authorizedFetch("/api/marketing/plans", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteMarketingPlan(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/marketing/plans/${id}`, { method: "DELETE" });
+}
+
+export function setMarketingItemStatus(id: string, status: MarketingItemStatus): Promise<MarketingPlanItem> {
+  return authorizedFetch(`/api/marketing/items/${id}/status`, { method: "POST", body: JSON.stringify({ status }) });
+}
+
+export interface ScheduleMarketingItemInput {
+  socialAccountId: string;
+  scheduledAt?: string;
+  mediaPath?: string;
+}
+
+export function scheduleMarketingItem(id: string, input: ScheduleMarketingItemInput): Promise<MarketingPlanItem> {
+  return authorizedFetch(`/api/marketing/items/${id}/schedule`, { method: "POST", body: JSON.stringify(input) });
+}
+
 // Upload multipart: il Content-Type con il boundary lo imposta il browser,
 // quindi non passa da authorizedFetch (che forza application/json).
 export async function uploadSocialMedia(file: File): Promise<{ mediaPath: string }> {
@@ -329,4 +395,161 @@ export async function uploadSocialMedia(file: File): Promise<{ mediaPath: string
     throw new Error(body?.error ?? `Upload fallito: ${res.status}`);
   }
   return res.json() as Promise<{ mediaPath: string }>;
+}
+
+// --- Schede (allenamento e alimentari) --------------------------------------
+// Personali, non condivise col team: le rotte non prendono mai un teamId.
+
+export interface TrainingPlanExercise {
+  name: string;
+  sets: number | null;
+  /** Stringa: una scheda prescrive "8-10" o "a cedimento", non solo un numero. */
+  reps: string | null;
+  weightKg: number | null;
+  restSeconds: number | null;
+  notes: string | null;
+}
+
+export interface TrainingPlanDay {
+  order: number;
+  name: string;
+  notes: string | null;
+  exercises: TrainingPlanExercise[];
+}
+
+export interface TrainingPlan {
+  id: string;
+  name: string;
+  notes: string | null;
+  validFrom: string;
+  /** null = scheda aperta, fino a nuovo ordine. */
+  validTo: string | null;
+  days: TrainingPlanDay[];
+}
+
+export interface TrainingToday {
+  plan: TrainingPlan;
+  day: TrainingPlanDay;
+  started: boolean;
+}
+
+export interface NutritionPlanMeal {
+  slot: string;
+  description: string;
+  grams: number | null;
+  calories: number | null;
+}
+
+export interface NutritionPlanDay {
+  order: number;
+  name: string;
+  notes: string | null;
+  meals: NutritionPlanMeal[];
+}
+
+export interface NutritionPlan {
+  id: string;
+  name: string;
+  notes: string | null;
+  validFrom: string;
+  validTo: string | null;
+  days: NutritionPlanDay[];
+}
+
+export interface NutritionToday {
+  plan: NutritionPlan;
+  day: NutritionPlanDay;
+  applied: boolean;
+}
+
+/**
+ * In input i giorni non hanno `order`: la rotazione e' la posizione
+ * nell'array, e il backend rinumera 1..N a ogni salvataggio.
+ */
+export interface TrainingExerciseInput {
+  name: string;
+  sets?: number | null;
+  reps?: string | null;
+  weightKg?: number | null;
+  restSeconds?: number | null;
+  notes?: string | null;
+}
+
+export interface TrainingDayInput {
+  name: string;
+  notes?: string | null;
+  exercises: TrainingExerciseInput[];
+}
+
+export interface TrainingPlanInput {
+  name: string;
+  notes?: string | null;
+  validFrom: string;
+  validTo?: string | null;
+  days: TrainingDayInput[];
+}
+
+export interface NutritionMealInput {
+  slot: string;
+  description: string;
+  grams?: number | null;
+  calories?: number | null;
+}
+
+export interface NutritionDayInput {
+  name: string;
+  notes?: string | null;
+  meals: NutritionMealInput[];
+}
+
+export interface NutritionPlanInput {
+  name: string;
+  notes?: string | null;
+  validFrom: string;
+  validTo?: string | null;
+  days: NutritionDayInput[];
+}
+
+export function fetchTrainingPlans(): Promise<TrainingPlan[]> {
+  return authorizedFetch<TrainingPlan[]>("/api/plans/training");
+}
+
+export function fetchTrainingToday(): Promise<TrainingToday | null> {
+  return authorizedFetch<TrainingToday | null>("/api/plans/training/today");
+}
+
+export function createTrainingPlan(input: TrainingPlanInput): Promise<TrainingPlan> {
+  return authorizedFetch("/api/plans/training", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateTrainingPlan(id: string, input: TrainingPlanInput): Promise<TrainingPlan> {
+  return authorizedFetch(`/api/plans/training/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteTrainingPlan(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/plans/training/${id}`, { method: "DELETE" });
+}
+
+export function fetchNutritionPlans(): Promise<NutritionPlan[]> {
+  return authorizedFetch<NutritionPlan[]>("/api/plans/nutrition");
+}
+
+export function fetchNutritionToday(): Promise<NutritionToday | null> {
+  return authorizedFetch<NutritionToday | null>("/api/plans/nutrition/today");
+}
+
+export function createNutritionPlan(input: NutritionPlanInput): Promise<NutritionPlan> {
+  return authorizedFetch("/api/plans/nutrition", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateNutritionPlan(id: string, input: NutritionPlanInput): Promise<NutritionPlan> {
+  return authorizedFetch(`/api/plans/nutrition/${id}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteNutritionPlan(id: string): Promise<{ ok: boolean }> {
+  return authorizedFetch(`/api/plans/nutrition/${id}`, { method: "DELETE" });
+}
+
+export function applyNutritionToday(): Promise<{ created: number; alreadyApplied: boolean }> {
+  return authorizedFetch("/api/plans/nutrition/today/apply", { method: "POST" });
 }

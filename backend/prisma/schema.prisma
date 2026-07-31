@@ -54,6 +54,7 @@ model User {
   conversations   Conversation[]
   trainingPlans   TrainingPlan[]
   nutritionPlans  NutritionPlan[]
+  marketingPlans  MarketingPlan[]
 }
 
 /**
@@ -403,4 +404,64 @@ type NutritionPlanMeal {
   description String
   grams       Float?
   calories    Float?
+}
+
+/**
+ * Piano editoriale di marketing generato dall'AI a partire da un brief.
+ *
+ * Personale e non condiviso col team (come diario, investimenti e schede): il
+ * marketing e' un'attivita' di chi lo fa, non della famiglia, quindi non passa
+ * ne' dal riepilogo del team ne' dal broadcast WebSocket.
+ *
+ * Il brief resta salvato sul piano e non solo nel prompt: rigenerare o
+ * prolungare un piano deve poter ripartire dallo stesso contesto (tono,
+ * pubblico, obiettivo) senza riscriverlo a mano.
+ */
+model MarketingPlan {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @db.ObjectId
+  name      String // es. "Lancio corso autunnale"
+  brief     String // la richiesta in parole dell'utente, da cui l'AI ha generato il piano
+  audience  String? // a chi si parla, es. "genitori 30-45 anni"
+  tone      String? // tono di voce, es. "diretto e informale"
+  objective String? // cosa deve ottenere, es. "iscrizioni alla newsletter"
+  // Canali richiesti nel brief. Stringhe libere come gli altri "enum" di questo
+  // schema: i canali su cui si pubblica cambiano piu' spesso del codice.
+  channels    String[]
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime @default(now())
+
+  items MarketingPlanItem[]
+
+  @@index([userId, periodStart])
+}
+
+/**
+ * Un singolo contenuto del piano. Modello a se' e non composite type (al
+ * contrario dei giorni delle schede palestra/alimentari): i contenuti si citano
+ * da fuori — si approvano uno per uno e da uno si programma un post social —
+ * quindi ognuno ha bisogno di un id proprio.
+ */
+model MarketingPlanItem {
+  id     String        @id @default(auto()) @map("_id") @db.ObjectId
+  plan   MarketingPlan @relation(fields: [planId], references: [id])
+  planId String        @db.ObjectId
+  // Quando pubblicare. Calcolato dal server (inizio periodo + giorno + ora
+  // proposti dal modello) e non preso come data dal modello: i modelli
+  // sbagliano l'aritmetica sul calendario, sommare giorni no.
+  scheduledFor DateTime
+  channel      String // "facebook" | "instagram" | "blog" | "newsletter" | ...
+  format       String // "post" | "reel" | "carosello" | "storia" | "articolo" | ...
+  title        String // il tema del contenuto, in una riga
+  copy         String // bozza del testo pubblicabile
+  hashtags     String[]
+  status       String   @default("idea") // "idea" | "approved" | "discarded"
+  // Post social creato da questo contenuto, se e' stato programmato dalla
+  // dashboard. Non e' una relation: il post vive di vita propria e sopravvive
+  // alla cancellazione del piano, come planId su WorkoutSession.
+  socialPostId String?  @db.ObjectId
+
+  @@index([planId, scheduledFor])
 }

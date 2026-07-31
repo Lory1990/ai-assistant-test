@@ -628,3 +628,24 @@
     opacity: 0.4;
   }
 }
+
+.language-picker {
+  background: transparent;
+  border: 1px solid var(--hud-border);
+  color: var(--hud-text-dim);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.language-picker:focus {
+  outline: none;
+  border-color: var(--hud-cyan);
+}
+
+.login-screen__theme {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

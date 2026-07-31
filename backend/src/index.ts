@@ -18,6 +18,8 @@ import { registerWebSocket } from "./ws/index.js";
 import { registerGoogleAuthRoutes } from "./api/googleAuth.js";
 import { registerDiaryRoutes } from "./api/diary.js";
 import { registerSocialRoutes } from "./api/social.js";
+import { registerPlanRoutes } from "./api/plans.js";
+import { registerMarketingRoutes } from "./api/marketing.js";
 import { ensureSparseUniqueIndexes } from "./db/ensureIndexes.js";
 
 async function main() {
@@ -46,6 +48,8 @@ async function main() {
   registerGoogleAuthRoutes(app);
   registerDiaryRoutes(app);
   registerSocialRoutes(app);
+  registerPlanRoutes(app);
+  registerMarketingRoutes(app);
   await registerWebSocket(app);
 
   const port = Number(process.env.PORT ?? 3000);

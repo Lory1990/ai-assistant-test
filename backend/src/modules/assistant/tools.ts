@@ -8,6 +8,7 @@ import { markEventImportant, getUpcomingImportantEvents } from "../calendar/inde
 import { listItems, addItems, markItemChecked } from "../shoppingList/index.js";
 import { createMealPlan } from "../mealPlan/index.js";
 import { addHolding, removeHolding, getPortfolio } from "../investments/index.js";
+import { createPlan as createMarketingPlan, listPlans as listMarketingPlans, formatPlanForChat, parseLocalDay } from "../marketing/index.js";
 
 export interface ToolContext {
   userId: string;
@@ -194,6 +195,38 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
       required: ["symbol"],
     },
   },
+  // Del marketing l'assistente puo' generare e rileggere il piano editoriale,
+  // ma non programmare i contenuti: creare un post su un profilo pubblico resta
+  // un'azione esplicita della dashboard, come per i post social.
+  {
+    name: "create_marketing_plan",
+    description:
+      "Genera con l'AI un piano editoriale di marketing personale (bozze di contenuti con canale, formato e data) e lo salva. Non pubblica e non programma nulla.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        brief: { type: "string", description: 'Cosa promuovere e come, es. "lancio del corso di pilates di settembre"' },
+        channels: {
+          type: "array",
+          items: { type: "string" },
+          description: 'Canali su cui pubblicare, es. ["instagram", "facebook", "newsletter"].',
+        },
+        periodStart: { type: "string", description: "Primo giorno del piano, formato YYYY-MM-DD." },
+        periodEnd: { type: "string", description: "Ultimo giorno del piano, formato YYYY-MM-DD." },
+        name: { type: "string", description: "Titolo del piano, opzionale: se manca lo propone il modello." },
+        audience: { type: "string", description: 'A chi si parla, es. "donne 30-50 anni a Milano".' },
+        tone: { type: "string", description: 'Tono di voce, es. "diretto e informale".' },
+        objective: { type: "string", description: 'Cosa deve ottenere, es. "prenotazioni della lezione di prova".' },
+        itemsPerWeek: { type: "number", description: "Quanti contenuti a settimana (default 3)." },
+      },
+      required: ["brief", "channels", "periodStart", "periodEnd"],
+    },
+  },
+  {
+    name: "list_marketing_plans",
+    description: "Elenca i piani editoriali di marketing personali dell'utente con i contenuti previsti.",
+    inputSchema: { type: "object", properties: {} },
+  },
 ];
 
 export async function executeTool(name: string, input: any, ctx: ToolContext): Promise<string> {
@@ -283,6 +316,27 @@ export async function executeTool(name: string, input: any, ctx: ToolContext): P
       if (!match) return `Nessun titolo "${input.symbol}" in portafoglio.`;
       await removeHolding(ctx.userId, match.id);
       return `Rimosso dal portafoglio: ${match.symbol}`;
+    }
+
+    case "create_marketing_plan": {
+      const plan = await createMarketingPlan(ctx.userId, {
+        name: input.name,
+        brief: input.brief,
+        audience: input.audience,
+        tone: input.tone,
+        objective: input.objective,
+        channels: input.channels,
+        periodStart: parseLocalDay(input.periodStart),
+        periodEnd: parseLocalDay(input.periodEnd, "end"),
+        itemsPerWeek: input.itemsPerWeek,
+      });
+      return `${formatPlanForChat(plan)}\n\nLe bozze sono nella sezione Marketing: da lì si approvano e si programmano.`;
+    }
+
+    case "list_marketing_plans": {
+      const plans = await listMarketingPlans(ctx.userId);
+      if (plans.length === 0) return "Nessun piano editoriale salvato.";
+      return plans.map(formatPlanForChat).join("\n\n");
     }
 
     default:

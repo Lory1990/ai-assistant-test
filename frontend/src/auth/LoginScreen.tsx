@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { LanguagePicker } from '../components/LanguagePicker'
+import { useI18n } from '../i18n'
 import {
   requestLoginCode,
   loginWithCode,
@@ -16,6 +18,7 @@ const OFFERED_PROVIDERS = [
 ]
 
 function SocialButtons() {
+  const { t } = useI18n()
   const [configured, setConfigured] = useState<SocialProvider[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,7 +41,7 @@ function SocialButtons() {
 
   return (
     <div className="login-social">
-      <div className="login-divider">oppure</div>
+      <div className="login-divider">{t('login.or')}</div>
       {OFFERED_PROVIDERS.map((p) => {
         const isConfigured = configured.some((c) => c.alias === p.alias)
         return (
@@ -50,19 +53,16 @@ function SocialButtons() {
             disabled={!isConfigured}
             title={
               isConfigured
-                ? `Accedi con ${p.label}`
-                : `Identity provider "${p.alias}" non configurato nel realm Keycloak`
+                ? t('login.continueWith', { provider: p.label })
+                : t('login.socialNotConfigured', { alias: p.alias })
             }
           >
-            Continua con {p.label}
+            {t('login.continueWith', { provider: p.label })}
           </button>
         )
       })}
       {configured.length === 0 && (
-        <p className="login-hint">
-          Per attivare i login social aggiungi gli identity provider Google/Facebook nel realm Keycloak
-          (Identity providers), con Client ID e Secret delle rispettive app OAuth.
-        </p>
+        <p className="login-hint">{t('login.socialHint')}</p>
       )}
       {error && <p className="login-error">{error}</p>}
     </div>
@@ -75,6 +75,7 @@ function SocialButtons() {
  * dimostrato di possedere quella casella, e l'account nasce al primo accesso.
  */
 function LoginScreen() {
+  const { t } = useI18n()
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -90,7 +91,7 @@ function LoginScreen() {
     try {
       await requestLoginCode(email.trim())
       setStep('code')
-      setNotice(`Ho inviato un codice a ${email.trim()}. Scade tra 10 minuti.`)
+      setNotice(t('login.codeSent', { email: email.trim() }))
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -122,23 +123,21 @@ function LoginScreen() {
   return (
     <div className="login-screen">
       <div className="login-screen__theme">
+        <LanguagePicker />
         <ThemeToggle />
       </div>
       <div className="brand-ring" />
-      <h1>Family HUD</h1>
-      <p>
-        Il quartier generale digitale della tua famiglia: pasti, obiettivi, allenamenti, casa e calendario in un
-        unico posto.
-      </p>
+      <h1>{t('app.name')}</h1>
+      <p>{t('app.tagline')}</p>
 
       <div className="login-card">
         {step === 'email' ? (
           <form onSubmit={requestCode} className="login-form">
-            <p className="login-hint">Inserisci la tua email: ti mando un codice per entrare.</p>
+            <p className="login-hint">{t('login.emailPrompt')}</p>
             <input
               className="hud-input"
               type="email"
-              placeholder="Email"
+              placeholder={t('login.emailPlaceholder')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
@@ -146,7 +145,7 @@ function LoginScreen() {
               required
             />
             <button className="hud-button" type="submit" disabled={pending}>
-              {pending ? 'Invio...' : 'Inviami il codice'}
+              {pending ? t('login.sending') : t('login.sendCode')}
             </button>
             {error && <p className="login-error">{error}</p>}
           </form>
@@ -158,7 +157,7 @@ function LoginScreen() {
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="Codice a 6 cifre"
+              placeholder={t('login.codePlaceholder')}
               value={code}
               onChange={(e) => setCode(e.target.value)}
               autoFocus
@@ -167,17 +166,17 @@ function LoginScreen() {
             <input
               className="hud-input"
               type="text"
-              placeholder="Come ti chiami (solo al primo accesso)"
+              placeholder={t('login.namePlaceholder')}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               autoComplete="name"
             />
             <button className="hud-button" type="submit" disabled={pending}>
-              {pending ? 'Verifico...' : 'Entra'}
+              {pending ? t('login.verifying') : t('login.enter')}
             </button>
             {error && <p className="login-error">{error}</p>}
             <button type="button" className="login-tab" onClick={backToEmail}>
-              Cambia email
+              {t('login.changeEmail')}
             </button>
           </form>
         )}

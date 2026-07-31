@@ -32,9 +32,30 @@ import {
   scheduleSocialPost,
   cancelSocialPost,
   uploadSocialMedia,
+  fetchTrainingPlans,
+  fetchTrainingToday,
+  createTrainingPlan,
+  updateTrainingPlan,
+  deleteTrainingPlan,
+  fetchNutritionPlans,
+  fetchNutritionToday,
+  createNutritionPlan,
+  updateNutritionPlan,
+  deleteNutritionPlan,
+  applyNutritionToday,
+  fetchMarketingPlans,
+  createMarketingPlan,
+  deleteMarketingPlan,
+  setMarketingItemStatus,
+  scheduleMarketingItem,
+  type CreateMarketingPlanInput,
+  type MarketingItemStatus,
+  type ScheduleMarketingItemInput,
   type CreateGoalInput,
   type AddHoldingInput,
   type SchedulePostInput,
+  type TrainingPlanInput,
+  type NutritionPlanInput,
 } from './api/client'
 
 export const queryKeys = {
@@ -50,6 +71,11 @@ export const queryKeys = {
   conversation: (id: string) => ['conversation', id] as const,
   socialAccounts: ['social-accounts'] as const,
   socialPosts: ['social-posts'] as const,
+  trainingPlans: ['training-plans'] as const,
+  trainingToday: ['training-today'] as const,
+  nutritionPlans: ['nutrition-plans'] as const,
+  nutritionToday: ['nutrition-today'] as const,
+  marketingPlans: ['marketing-plans'] as const,
 }
 
 export function useMe() {
@@ -97,7 +123,12 @@ export function useLogWorkout() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (text: string) => logWorkout(text),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.recentWorkouts }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recentWorkouts })
+      // La prima registrazione della giornata timbra il giorno di scheda e fa
+      // avanzare la rotazione: "oggi tocca" non e' piu' quello di prima.
+      queryClient.invalidateQueries({ queryKey: queryKeys.trainingToday })
+    },
   })
 }
 
@@ -249,6 +280,131 @@ export function useCancelSocialPost() {
   })
 }
 
+// --- Schede di allenamento ---------------------------------------------------
+
+export function useTrainingPlans() {
+  return useQuery({ queryKey: queryKeys.trainingPlans, queryFn: fetchTrainingPlans })
+}
+
+export function useTrainingToday() {
+  return useQuery({ queryKey: queryKeys.trainingToday, queryFn: fetchTrainingToday })
+}
+
+/**
+ * Salvare una scheda puo' cambiarne un'altra: creando una scheda nuova quella
+ * aperta prima viene chiusa il giorno precedente. Per questo si invalida
+ * tutta la lista, non solo la scheda toccata.
+ */
+export function useSaveTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: TrainingPlanInput }) =>
+      id ? updateTrainingPlan(id, input) : createTrainingPlan(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.trainingPlans })
+      queryClient.invalidateQueries({ queryKey: queryKeys.trainingToday })
+    },
+  })
+}
+
+export function useDeleteTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteTrainingPlan(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.trainingPlans })
+      queryClient.invalidateQueries({ queryKey: queryKeys.trainingToday })
+    },
+  })
+}
+
+// --- Schede alimentari -------------------------------------------------------
+
+export function useNutritionPlans() {
+  return useQuery({ queryKey: queryKeys.nutritionPlans, queryFn: fetchNutritionPlans })
+}
+
+export function useNutritionToday() {
+  return useQuery({ queryKey: queryKeys.nutritionToday, queryFn: fetchNutritionToday })
+}
+
+export function useSaveNutritionPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: NutritionPlanInput }) =>
+      id ? updateNutritionPlan(id, input) : createNutritionPlan(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutritionPlans })
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutritionToday })
+    },
+  })
+}
+
+export function useDeleteNutritionPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteNutritionPlan(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutritionPlans })
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutritionToday })
+    },
+  })
+}
+
+/** Genera i pasti pianificati di oggi dal giorno di scheda che tocca. */
+export function useApplyNutritionToday() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: applyNutritionToday,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutritionToday })
+      // I pasti generati finiscono tra quelli di oggi, che sono del team.
+      queryClient.invalidateQueries({ queryKey: queryKeys.teamSummary })
+    },
+  })
+}
+
+export function useMarketingPlans() {
+  return useQuery({ queryKey: queryKeys.marketingPlans, queryFn: fetchMarketingPlans })
+}
+
+/** La generazione passa dall'AI: può volerci qualche decina di secondi, non c'è nulla di ottimistico da mostrare. */
+export function useCreateMarketingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateMarketingPlanInput) => createMarketingPlan(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.marketingPlans }),
+  })
+}
+
+export function useDeleteMarketingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteMarketingPlan(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.marketingPlans }),
+  })
+}
+
+export function useSetMarketingItemStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: MarketingItemStatus }) => setMarketingItemStatus(id, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.marketingPlans }),
+  })
+}
+
+export function useScheduleMarketingItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...input }: ScheduleMarketingItemInput & { id: string }) => scheduleMarketingItem(id, input),
+    onSuccess: () => {
+      // Il contenuto ora punta a un post, e il post compare tra quelli programmati.
+      queryClient.invalidateQueries({ queryKey: queryKeys.marketingPlans })
+      queryClient.invalidateQueries({ queryKey: queryKeys.socialPosts })
+    },
+  })
+}
+
 /** L'assistente puo' aver chiamato qualsiasi tool: invalidiamo tutte le query dati dopo un messaggio con tool-call. */
 export function useInvalidateAllData() {
   const queryClient = useQueryClient()
@@ -258,5 +414,8 @@ export function useInvalidateAllData() {
     queryClient.invalidateQueries({ queryKey: queryKeys.tahomaShutters })
     queryClient.invalidateQueries({ queryKey: queryKeys.recentWorkouts })
     queryClient.invalidateQueries({ queryKey: queryKeys.portfolio })
+    queryClient.invalidateQueries({ queryKey: queryKeys.trainingToday })
+    queryClient.invalidateQueries({ queryKey: queryKeys.nutritionToday })
+    queryClient.invalidateQueries({ queryKey: queryKeys.marketingPlans })
   }
 }

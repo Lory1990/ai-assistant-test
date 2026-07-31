@@ -1,4 +1,5 @@
 import { prisma } from "../../db/client.js";
+import { getTrainingToday } from "../plans/training.js";
 import { parseExerciseText, type ParsedExercise } from "./parser.js";
 
 function startOfDay(date: Date): Date {
@@ -26,8 +27,19 @@ export async function logExercise(userId: string, teamId: string, exercise: Pars
     });
   }
 
+  // Prima sessione di oggi: se c'e' una scheda attiva la timbriamo qui, ed e'
+  // proprio questa timbratura che fa avanzare la rotazione (il giorno di
+  // domani sara' quello dopo). Registrare senza scheda resta possibile.
+  const planned = await getTrainingToday(userId);
+
   return prisma.workoutSession.create({
-    data: { userId, teamId, exercises: [exercise] },
+    data: {
+      userId,
+      teamId,
+      exercises: [exercise],
+      planId: planned?.plan.id ?? null,
+      planDayOrder: planned?.day.order ?? null,
+    },
   });
 }
 

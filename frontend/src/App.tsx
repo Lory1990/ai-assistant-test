@@ -9,6 +9,8 @@ import { useMe } from './queries'
 import { useLiveUpdates } from './ws'
 import { SectionLoader } from './components/SectionLoader'
 import { ThemeToggle } from './components/ThemeToggle'
+import { LanguagePicker } from './components/LanguagePicker'
+import { useI18n } from './i18n'
 
 const ChatSection = lazy(() => import('./sections/ChatSection'))
 const OverviewSection = lazy(() => import('./sections/OverviewSection'))
@@ -19,20 +21,23 @@ const GoalsSection = lazy(() => import('./sections/GoalsSection'))
 const InvestmentsSection = lazy(() => import('./sections/InvestmentsSection'))
 const DiarySection = lazy(() => import('./sections/DiarySection'))
 const SocialSection = lazy(() => import('./sections/SocialSection'))
+const MarketingSection = lazy(() => import('./sections/MarketingSection'))
 const ProfileSection = lazy(() => import('./sections/ProfileSection'))
 
+// L'etichetta è una chiave di traduzione, risolta al render.
 const SECTIONS = [
-  { path: 'chat', label: 'Chat' },
-  { path: 'overview', label: 'Panoramica' },
-  { path: 'fitness', label: 'Fitness' },
-  { path: 'food', label: 'Alimentazione' },
-  { path: 'home', label: 'Casa' },
-  { path: 'goals', label: 'Obiettivi' },
-  { path: 'investments', label: 'Investimenti' },
-  { path: 'diary', label: 'Diario' },
-  { path: 'social', label: 'Social' },
-  { path: 'profile', label: 'Profilo' },
-]
+  { path: 'chat', labelKey: 'nav.chat' },
+  { path: 'overview', labelKey: 'nav.overview' },
+  { path: 'fitness', labelKey: 'nav.fitness' },
+  { path: 'food', labelKey: 'nav.food' },
+  { path: 'home', labelKey: 'nav.home' },
+  { path: 'goals', labelKey: 'nav.goals' },
+  { path: 'investments', labelKey: 'nav.investments' },
+  { path: 'diary', labelKey: 'nav.diary' },
+  { path: 'social', labelKey: 'nav.social' },
+  { path: 'marketing', labelKey: 'nav.marketing' },
+  { path: 'profile', labelKey: 'nav.profile' },
+] as const
 
 function useClock() {
   const [now, setNow] = useState(new Date())
@@ -47,25 +52,29 @@ function DashboardLayout() {
   const { data: me } = useMe()
   const clock = useClock()
   const live = useLiveUpdates()
+  const { t, language } = useI18n()
 
   if (!me) return null
 
   return (
     <div className="hud-shell">
       <nav className="hud-sidebar">
-        <div className="hud-sidebar__brand">Family HUD</div>
+        <div className="hud-sidebar__brand">{t('app.name')}</div>
         {SECTIONS.map((s) => (
           <NavLink
             key={s.path}
             to={`/${s.path}`}
             className={({ isActive }) => `hud-sidebar__item ${isActive ? 'is-active' : ''}`}
           >
-            {s.label}
+            {t(s.labelKey)}
           </NavLink>
         ))}
-        <div className="hud-sidebar__live" title={live ? 'Aggiornamenti live attivi' : 'Riconnessione...'}>
+        <div
+          className="hud-sidebar__live"
+          title={t(live ? 'live.titleConnected' : 'live.titleReconnecting')}
+        >
           <span className={`hud-live-dot ${live ? 'is-live' : ''}`} />
-          {live ? 'Live' : 'Riconnessione...'}
+          {t(live ? 'live.connected' : 'live.reconnecting')}
         </div>
       </nav>
 
@@ -73,7 +82,8 @@ function DashboardLayout() {
         <header className="hud-header">
           <span className="family-name">{me.team.name}</span>
           <span className="hud-header__right">
-            <span className="clock">{clock.toLocaleTimeString('it-IT')}</span>
+            <span className="clock">{clock.toLocaleTimeString(language)}</span>
+            <LanguagePicker />
             <ThemeToggle />
           </span>
         </header>
@@ -100,6 +110,7 @@ function Dashboard() {
         <Route path="investments" element={<InvestmentsSection />} />
         <Route path="diary" element={<DiarySection />} />
         <Route path="social" element={<SocialSection />} />
+        <Route path="marketing" element={<MarketingSection />} />
         <Route path="profile" element={<ProfileSection />} />
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Route>
