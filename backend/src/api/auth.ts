@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { authenticate } from "../auth/plugin.js";
 import { redis } from "../cache/redis.js";
 import { generateCode } from "../utils/code.js";
 import { env } from "../config/env.js";
@@ -11,7 +12,7 @@ import {
   AuthError,
   type TokenSet,
 } from "../modules/auth/login.js";
-import { registerUser, sendPasswordResetEmail, listSocialProviders } from "../modules/auth/keycloakAdmin.js";
+import { registerUser, sendPasswordResetEmail, listSocialProviders, userHasOtp } from "../modules/auth/keycloakAdmin.js";
 
 const STATE_TTL_SECONDS = 10 * 60;
 const STATE_KEY_PREFIX = "kc-social-state:";
@@ -24,6 +25,8 @@ const HANDOFF_KEY_PREFIX = "kc-social-handoff:";
 interface LoginBody {
   email: string;
   password: string;
+  /** Codice della verifica in due passaggi, per chi l'ha attivata. */
+  totp?: string;
 }
 
 interface RegisterBody extends LoginBody {
@@ -44,13 +47,25 @@ export function registerAuthRoutes(app: FastifyInstance): void {
   // servono proprio a ottenere il primo token.
 
   app.post<{ Body: LoginBody }>("/api/auth/login", async (request, reply) => {
-    const { email, password } = request.body ?? {};
+    const { email, password, totp } = request.body ?? {};
     if (!email?.trim() || !password) {
       return reply.code(400).send({ error: "Email e password sono obbligatorie." });
     }
     try {
-      return await loginWithPassword(email.trim(), password);
+      return await loginWithPassword(email.trim(), password, totp?.trim() || undefined);
     } catch (err) {
+      // Keycloak risponde "Invalid user credentials" sia per password sbagliata
+      // sia per codice OTP mancante: per capire quale dei due e' stato, va
+      // chiesto all'Admin API se l'utente ha la verifica in due passaggi.
+      if (err instanceof AuthError && err.statusCode === 401 && !totp) {
+        const needsOtp = await userHasOtp(email.trim()).catch(() => false);
+        if (needsOtp) {
+          return reply.code(401).send({
+            error: "Inserisci il codice della verifica in due passaggi.",
+            otpRequired: true,
+          });
+        }
+      }
       return sendAuthError(reply, err);
     }
   });
@@ -94,6 +109,21 @@ export function registerAuthRoutes(app: FastifyInstance): void {
     const { refreshToken } = request.body ?? {};
     if (refreshToken) await revokeSession(refreshToken).catch(() => {});
     return reply.send({ ok: true });
+  });
+
+  /**
+   * Stato della verifica in due passaggi, piu' l'URL dove configurarla.
+   * L'attivazione passa dall'Account Console di Keycloak perche' non esiste un
+   * endpoint Admin API per registrare una credenziale OTP: cosi' il secondo
+   * fattore resta parte dell'identita' in Keycloak e vale per ogni client.
+   */
+  app.get("/api/auth/two-factor", { preHandler: authenticate }, async (request) => {
+    const email = request.currentUser!.email;
+    const enabled = email ? await userHasOtp(email).catch(() => false) : false;
+    return {
+      enabled,
+      setupUrl: `${env.keycloakIssuerUrl.replace(/\/$/, "")}/account/account-security/signing-in`,
+    };
   });
 
   app.get("/api/auth/providers", async (_request, reply) => {

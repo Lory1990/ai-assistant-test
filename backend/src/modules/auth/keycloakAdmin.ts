@@ -138,6 +138,23 @@ export async function sendPasswordResetEmail(email: string): Promise<void> {
   }
 }
 
+/**
+ * Se l'utente ha una credenziale OTP configurata.
+ *
+ * Serve perche' il direct grant risponde sempre "Invalid user credentials",
+ * identico sia quando la password e' sbagliata sia quando manca il codice OTP:
+ * senza questa verifica il form non potrebbe sapere se chiedere il codice.
+ */
+export async function userHasOtp(email: string): Promise<boolean> {
+  const userId = await findUserIdByEmail(email).catch(() => null);
+  if (!userId) return false;
+
+  const res = await adminFetch(`/users/${userId}/credentials`);
+  if (!res.ok) return false;
+  const credentials = (await res.json()) as { type: string }[];
+  return credentials.some((c) => c.type === "otp");
+}
+
 export interface SocialProvider {
   alias: string;
   displayName: string;

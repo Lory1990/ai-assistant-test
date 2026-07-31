@@ -6,6 +6,7 @@ import {
   requestPasswordReset,
   fetchSocialProviders,
   startSocialLogin,
+  OtpRequiredError,
   type SocialProvider,
 } from './authStore'
 
@@ -83,6 +84,10 @@ function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [totp, setTotp] = useState('')
+  // Il campo codice compare solo dopo che il backend segnala che serve: Keycloak
+  // non permette di saperlo prima del tentativo.
+  const [otpRequired, setOtpRequired] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -91,6 +96,8 @@ function LoginScreen() {
     setMode(next)
     setError(null)
     setNotice(null)
+    setOtpRequired(false)
+    setTotp('')
   }
 
   async function submit(e: React.FormEvent) {
@@ -102,7 +109,7 @@ function LoginScreen() {
       if (mode === 'login') {
         // Al successo l'authStore notifica App, che monta la dashboard:
         // non serve fare nulla qui.
-        await loginWithPassword(email.trim(), password)
+        await loginWithPassword(email.trim(), password, totp.trim() || undefined)
       } else if (mode === 'register') {
         await register(email.trim(), password, displayName.trim() || undefined)
       } else {
@@ -110,6 +117,8 @@ function LoginScreen() {
         setNotice('Se esiste un account con questa email, riceverai le istruzioni per reimpostare la password.')
       }
     } catch (err) {
+      // Email e password restano compilate: si aggiunge solo il codice.
+      if (err instanceof OtpRequiredError) setOtpRequired(true)
       setError((err as Error).message)
     } finally {
       setPending(false)
@@ -170,6 +179,19 @@ function LoginScreen() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              required
+            />
+          )}
+          {mode === 'login' && otpRequired && (
+            <input
+              className="hud-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="Codice di verifica"
+              value={totp}
+              onChange={(e) => setTotp(e.target.value)}
+              autoFocus
               required
             />
           )}

@@ -103,8 +103,35 @@ export async function restoreSession(): Promise<boolean> {
   return token !== null
 }
 
-export async function loginWithPassword(email: string, password: string): Promise<void> {
-  storeTokens(await postJson<TokenSet>('/api/auth/login', { email, password }))
+/** Sollevato quando l'account ha la verifica in due passaggi e serve il codice. */
+export class OtpRequiredError extends Error {}
+
+export async function loginWithPassword(email: string, password: string, totp?: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, totp }),
+  })
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null)
+    const message = payload?.error ?? `Richiesta fallita: ${res.status}`
+    throw payload?.otpRequired ? new OtpRequiredError(message) : new Error(message)
+  }
+  storeTokens((await res.json()) as TokenSet)
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean
+  setupUrl: string
+}
+
+export async function fetchTwoFactorStatus(): Promise<TwoFactorStatus> {
+  const token = await getAccessToken()
+  const res = await fetch(`${API_URL}/api/auth/two-factor`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error(`Richiesta fallita: ${res.status}`)
+  return res.json() as Promise<TwoFactorStatus>
 }
 
 export async function register(email: string, password: string, displayName?: string): Promise<void> {

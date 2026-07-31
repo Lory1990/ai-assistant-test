@@ -54,11 +54,19 @@ async function postToTokenEndpoint(params: Record<string, string>, invalidGrantM
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in };
 }
 
-/** Login email + password (direct access grant): la schermata resta nella nostra app. */
-export function loginWithPassword(email: string, password: string): Promise<TokenSet> {
+/**
+ * Login email + password (direct access grant): la schermata resta nella nostra
+ * app. `totp` va passato quando l'utente ha attivato la verifica in due
+ * passaggi — il sub-flow "Direct Grant - Conditional OTP" del realm lo richiede
+ * solo per chi ha una credenziale OTP configurata.
+ */
+export function loginWithPassword(email: string, password: string, totp?: string): Promise<TokenSet> {
   return postToTokenEndpoint(
-    { grant_type: "password", scope: "openid", username: email, password },
-    "Email o password non corretti.",
+    { grant_type: "password", scope: "openid", username: email, password, ...(totp ? { totp } : {}) },
+    // Keycloak non dice quale dei due e' sbagliato, quindi non lo diciamo
+    // nemmeno noi: dare la colpa alla password quando era il codice manderebbe
+    // l'utente a cercare il problema nel posto sbagliato.
+    totp ? "Credenziali o codice di verifica non corretti." : "Email o password non corretti.",
   );
 }
 
