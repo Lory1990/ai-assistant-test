@@ -52,6 +52,8 @@ model User {
   socialAccounts  SocialAccount[]
   socialPosts     SocialPost[]
   conversations   Conversation[]
+  trainingPlans   TrainingPlan[]
+  nutritionPlans  NutritionPlan[]
 }
 
 /**
@@ -195,6 +197,11 @@ model Meal {
   // true per i pasti generati da un piano alimentare AI (ancora da consumare),
   // false per i pasti effettivamente registrati come mangiati.
   planned     Boolean  @default(false)
+  // Scheda alimentare e giorno della rotazione da cui questo pasto e' stato
+  // materializzato (o che stava seguendo). Stessa scelta di WorkoutSession:
+  // non e' una relation, il pasto sopravvive alla cancellazione della scheda.
+  planId       String? @db.ObjectId
+  planDayOrder Int?
 }
 
 model ShoppingListItem {
@@ -278,6 +285,16 @@ model WorkoutSession {
   userId    String            @db.ObjectId
   loggedAt  DateTime          @default(now())
   exercises WorkoutExercise[]
+  // Scheda e giorno della rotazione a cui questa sessione si riferisce, se
+  // l'utente si stava allenando seguendo una scheda. Non e' una relation:
+  // la sessione resta valida (e leggibile dal team) anche se la scheda,
+  // che e' personale, viene cancellata. Sono anche l'unico stato da cui si
+  // ricava a che punto della rotazione si e' arrivati: il "giorno di oggi"
+  // e' quello dopo l'ultimo registrato, senza contatori da tenere allineati.
+  planId        String?       @db.ObjectId
+  planDayOrder  Int?
+
+  @@index([userId, planId, loggedAt])
 }
 
 type WorkoutExercise {
@@ -286,4 +303,104 @@ type WorkoutExercise {
   reps     Int?
   weightKg Float?
   notes    String?
+}
+
+/**
+ * Scheda di allenamento personale: il programma da seguire, distinto dalle
+ * WorkoutSession che registrano cosa e' stato davvero fatto.
+ *
+ * Personale e non condivisa col team (come diario e investimenti): una scheda
+ * dice cosa uno non riesce ancora a sollevare, e non e' un dato che ha senso
+ * mettere in bacheca. Restano condivise le sessioni registrate.
+ *
+ * Validita': una sola scheda attiva per volta, quindi le finestre
+ * [validFrom, validTo] di uno stesso utente non si sovrappongono mai —
+ * vincolo applicato nel modulo, MongoDB non puo' esprimerlo. validTo null
+ * significa "aperta, fino a nuovo ordine": creando una scheda successiva la
+ * precedente viene chiusa al giorno prima del nuovo validFrom.
+ */
+model TrainingPlan {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String    @db.ObjectId
+  name      String // es. "Massa 4 giorni", "Ricomposizione autunno"
+  notes     String?
+  validFrom DateTime
+  validTo   DateTime?
+  createdAt DateTime  @default(now())
+
+  // Giorni della rotazione, ordinati per `order` (1..N). Non sono agganciati
+  // ai giorni della settimana: si esegue il giorno successivo a quello fatto
+  // l'ultima volta, quando si va in palestra.
+  days TrainingPlanDay[]
+
+  @@index([userId, validFrom])
+}
+
+/**
+ * Un giorno della rotazione. Composite type e non modello a se': i giorni non
+ * si citano da fuori (chi ci si riferisce usa planId + order, che non cambiano
+ * se la scheda viene riordinata) e cosi' l'intera scheda si legge e si
+ * riscrive come un documento solo.
+ */
+type TrainingPlanDay {
+  // Posizione nella rotazione, 1-based. Unico dentro la scheda: garantito dal
+  // modulo, un composite type non puo' avere @@unique.
+  order     Int
+  name      String // es. "Petto e tricipiti"
+  notes     String?
+  exercises TrainingPlanExercise[]
+}
+
+type TrainingPlanExercise {
+  name String
+  sets Int?
+  // Stringa e non Int: una scheda prescrive spesso un intervallo ("8-10") o
+  // un modo di finire la serie ("cedimento"), non un numero secco. Il numero
+  // secco resta in WorkoutExercise.reps, che registra cosa si e' fatto.
+  reps        String?
+  weightKg    Float?
+  restSeconds Int?
+  notes       String?
+}
+
+/**
+ * Scheda alimentare personale. Stessa forma della scheda di allenamento:
+ * finestra di validita' senza sovrapposizioni e giorni ordinati in rotazione
+ * (non lunedi'-domenica), cosi' le due si spiegano e si gestiscono allo
+ * stesso modo.
+ *
+ * Distinta dai Meal con planned=true, che restano i pasti di una singola
+ * giornata: la scheda e' il modello ricorrente da cui quei pasti si generano.
+ */
+model NutritionPlan {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String    @db.ObjectId
+  name      String // es. "Definizione 1800 kcal"
+  notes     String?
+  validFrom DateTime
+  validTo   DateTime?
+  createdAt DateTime  @default(now())
+
+  days NutritionPlanDay[]
+
+  @@index([userId, validFrom])
+}
+
+type NutritionPlanDay {
+  order Int
+  name  String // es. "Giorno di allenamento", "Giorno di scarico"
+  notes String?
+  meals NutritionPlanMeal[]
+}
+
+type NutritionPlanMeal {
+  // "colazione" | "spuntino" | "pranzo" | "merenda" | "cena" — stringa libera
+  // come gli altri enum di questo schema, i pasti della giornata cambiano
+  // troppo da persona a persona per chiuderli.
+  slot        String
+  description String
+  grams       Float?
+  calories    Float?
 }

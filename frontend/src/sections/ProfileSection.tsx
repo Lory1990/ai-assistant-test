@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { logout } from '../auth/authStore'
 import {
   useMe,
-  useRequestLinkCode,
-  useLinkTelegram,
   useGoogleStatus,
   useRequestGoogleConnectUrl,
   useDisconnectGoogle,
@@ -58,54 +56,21 @@ function GoogleAccountPanel() {
   )
 }
 
-function TelegramLinkPanel({ telegramLinked }: { telegramLinked: boolean }) {
-  const requestCode = useRequestLinkCode()
-  const linkTelegram = useLinkTelegram()
-  const [redeemCode, setRedeemCode] = useState('')
-
-  async function redeem(e: React.FormEvent) {
-    e.preventDefault()
-    if (!redeemCode.trim()) return
-    linkTelegram.mutate(redeemCode.trim(), { onSuccess: () => setRedeemCode('') })
-  }
-
+/**
+ * Il collegamento non si fa più da qui: si scrive al bot, che chiede l'email e
+ * manda un codice. Questo pannello resta per dire se la chat è collegata.
+ */
+function TelegramLinkPanel({ telegramLinked, email }: { telegramLinked: boolean; email: string | null }) {
   return (
     <div className="hud-panel">
-      <h3>Collega Telegram</h3>
-      {telegramLinked && <p className="link-hint">✅ Bot Telegram già collegato a questo account.</p>}
-
-      <p className="link-hint" style={{ marginTop: 12 }}>
-        Hai già scritto al bot? Al primo messaggio ti mostra un codice: incollalo qui.
-      </p>
-      <form onSubmit={redeem} style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-        <input
-          className="hud-input"
-          placeholder="Codice dal bot"
-          value={redeemCode}
-          onChange={(e) => setRedeemCode(e.target.value)}
-        />
-        <button className="hud-button" type="submit" disabled={linkTelegram.isPending}>
-          {linkTelegram.isPending ? 'Collego...' : 'Collega'}
-        </button>
-      </form>
-      {linkTelegram.isError && <p className="empty">{(linkTelegram.error as Error).message}</p>}
-      {linkTelegram.isSuccess && <p className="link-hint">Collegato con successo.</p>}
-
-      <p className="link-hint" style={{ marginTop: 16 }}>
-        Oppure genera qui un codice da incollare tu nel bot con /collega:
-      </p>
-      {requestCode.data ? (
-        <>
-          <div className="link-code">{requestCode.data.code}</div>
-          <p className="link-hint">
-            Nel bot invia <code>/collega {requestCode.data.code}</code>. Valido fino alle{' '}
-            {new Date(requestCode.data.expiresAt).toLocaleTimeString('it-IT')}.
-          </p>
-        </>
+      <h3>Telegram</h3>
+      {telegramLinked ? (
+        <p className="link-hint">✅ Bot Telegram collegato a questo account.</p>
       ) : (
-        <button className="hud-button" onClick={() => requestCode.mutate()} disabled={requestCode.isPending}>
-          Genera codice
-        </button>
+        <p className="link-hint">
+          Scrivi al bot su Telegram: ti chiederà la tua email ({email ?? 'quella di questo account'}) e ti manderà
+          un codice di verifica. Inserito quello, la chat sarà collegata a questo stesso account.
+        </p>
       )}
     </div>
   )
@@ -138,7 +103,7 @@ function ProfileSection() {
         </button>
       </div>
 
-      <TelegramLinkPanel telegramLinked={me.telegramLinked} />
+      <TelegramLinkPanel telegramLinked={me.telegramLinked} email={me.email} />
       <GoogleAccountPanel />
     </div>
   )
