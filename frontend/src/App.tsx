@@ -8,6 +8,7 @@ import SocialCallback from './auth/SocialCallback'
 import { useMe } from './queries'
 import { useLiveUpdates } from './ws'
 import { SectionLoader } from './components/SectionLoader'
+import { ThemeToggle } from './components/ThemeToggle'
 
 const ChatSection = lazy(() => import('./sections/ChatSection'))
 const OverviewSection = lazy(() => import('./sections/OverviewSection'))
@@ -71,7 +72,10 @@ function DashboardLayout() {
       <div className="hud-main">
         <header className="hud-header">
           <span className="family-name">{me.team.name}</span>
-          <span className="clock">{clock.toLocaleTimeString('it-IT')}</span>
+          <span className="hud-header__right">
+            <span className="clock">{clock.toLocaleTimeString('it-IT')}</span>
+            <ThemeToggle />
+          </span>
         </header>
 
         <Suspense fallback={<SectionLoader />}>

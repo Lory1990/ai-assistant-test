@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ThemeToggle } from '../components/ThemeToggle'
 import {
   loginWithPassword,
   register,
@@ -117,6 +118,9 @@ function LoginScreen() {
 
   return (
     <div className="login-screen">
+      <div className="login-screen__theme">
+        <ThemeToggle />
+      </div>
       <div className="brand-ring" />
       <h1>Family HUD</h1>
       <p>

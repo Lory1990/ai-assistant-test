@@ -16,7 +16,7 @@
 .hud-sidebar__brand {
   font-family: var(--display);
   color: var(--hud-cyan);
-  text-shadow: 0 0 12px var(--hud-cyan-dim);
+  text-shadow: var(--hud-title-glow);
   padding: 0 24px 20px;
   font-size: 15px;
   letter-spacing: 2px;
@@ -46,7 +46,7 @@
 .hud-sidebar__item.is-active {
   color: var(--hud-cyan);
   border-left-color: var(--hud-cyan);
-  background: rgba(35, 244, 255, 0.06);
+  background: var(--hud-accent-soft);
 }
 
 .hud-main {
@@ -59,7 +59,7 @@
 }
 
 .hud-input {
-  background: rgba(35, 244, 255, 0.05);
+  background: var(--hud-accent-softer);
   border: 1px solid var(--hud-border);
   color: var(--hud-text);
   font-family: var(--mono);
@@ -108,6 +108,7 @@
 /* ---------- Login screen ---------- */
 
 .login-screen {
+  position: relative;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
@@ -122,7 +123,7 @@
   height: 160px;
   border-radius: 50%;
   border: 2px solid var(--hud-cyan);
-  box-shadow: 0 0 24px var(--hud-cyan-dim), inset 0 0 24px var(--hud-cyan-dim);
+  box-shadow: var(--hud-glow-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -157,13 +158,13 @@
   text-transform: uppercase;
   font-size: 14px;
   border-radius: 4px;
-  box-shadow: 0 0 12px var(--hud-cyan-dim);
+  box-shadow: var(--hud-glow);
   transition: background 0.2s, color 0.2s;
 }
 
 .hud-button:hover {
   background: var(--hud-cyan);
-  color: #001217;
+  color: var(--hud-on-accent);
 }
 
 .hud-button--ghost {
@@ -174,7 +175,7 @@
 }
 
 .hud-button--ghost:hover:not(:disabled) {
-  background: rgba(35, 244, 255, 0.08);
+  background: var(--hud-accent-soft);
   color: var(--hud-cyan);
 }
 
@@ -192,8 +193,8 @@
   width: min(400px, 100%);
   border: 1px solid var(--hud-border);
   border-radius: 6px;
-  background: rgba(3, 22, 30, 0.6);
-  box-shadow: 0 0 32px var(--hud-cyan-dim);
+  background: var(--hud-panel-bg);
+  box-shadow: var(--hud-glow-strong);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -258,7 +259,7 @@
 }
 
 .login-error {
-  color: #ff6b6b;
+  color: var(--hud-error);
 }
 
 .login-hint {
@@ -294,6 +295,38 @@
   color: var(--hud-cyan);
 }
 
+.hud-header__right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--hud-border);
+  color: var(--hud-cyan);
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.theme-toggle:hover {
+  background: var(--hud-accent-soft);
+  border-color: var(--hud-cyan);
+}
+
+.login-screen__theme {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
 .hud-header .logout {
   background: none;
   border: none;
@@ -319,7 +352,7 @@
 
 .gauge-ring__arc {
   transition: stroke-dashoffset 0.6s ease;
-  filter: drop-shadow(0 0 6px var(--hud-cyan-dim));
+  filter: var(--hud-arc-glow);
 }
 
 .gauge-ring__center {
@@ -408,7 +441,7 @@
   font-size: 28px;
   letter-spacing: 6px;
   color: var(--hud-cyan);
-  text-shadow: 0 0 12px var(--hud-cyan-dim);
+  text-shadow: var(--hud-title-glow);
 }
 
 .link-hint {
@@ -451,7 +484,7 @@
 
 .conversation-item.is-active {
   border-color: var(--hud-cyan);
-  background: rgba(35, 244, 255, 0.06);
+  background: var(--hud-accent-soft);
 }
 
 .conversation-item__title {
@@ -518,13 +551,13 @@
 
 .chat-message--user {
   align-self: flex-end;
-  background: rgba(35, 244, 255, 0.08);
+  background: var(--hud-accent-soft);
   border-color: var(--hud-cyan-dim);
 }
 
 .chat-message--assistant {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hud-surface-soft);
 }
 
 .chat-message__role {

@@ -4,6 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.tsx'
+import { initTheme } from './theme'
+
+// Prima del render: evita il lampo del tema sbagliato al primo paint.
+initTheme()
 
 const queryClient = new QueryClient({
   defaultOptions: {

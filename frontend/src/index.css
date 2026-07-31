@@ -1,4 +1,11 @@
-:root {
+/*
+ * Due temi, non uno invertito: la dashboard nasce come HUD ciano su nero, e su
+ * fondo chiaro il ciano acceso piu' il glow diventano illeggibili. Nel tema
+ * light l'accento e' scurito per tenere il contrasto, e glow e scanline sono
+ * spenti — su bianco leggerebbero come sporco, non come effetto.
+ */
+:root,
+:root[data-theme='dark'] {
   --hud-cyan: #23f4ff;
   --hud-cyan-dim: rgba(35, 244, 255, 0.35);
   --hud-bg: #030b12;
@@ -7,10 +14,61 @@
   --hud-text: #d7fbff;
   --hud-text-dim: #6fa8b3;
 
+  /* Riempimenti tenui usati da input, righe e bolle di chat. */
+  --hud-accent-soft: rgba(35, 244, 255, 0.08);
+  --hud-accent-softer: rgba(35, 244, 255, 0.05);
+  --hud-surface-soft: rgba(255, 255, 255, 0.03);
+  /* Testo sopra l'accento pieno (bottone in hover). */
+  --hud-on-accent: #001217;
+  --hud-error: #ff6b6b;
+
+  /* Glow e scanline: parte dell'identita' HUD, ma solo sul fondo scuro. */
+  --hud-glow: 0 0 12px var(--hud-cyan-dim);
+  --hud-glow-strong: 0 0 24px var(--hud-cyan-dim), inset 0 0 24px var(--hud-cyan-dim);
+  --hud-title-glow: 0 0 12px var(--hud-cyan-dim);
+  --hud-arc-glow: drop-shadow(0 0 6px var(--hud-cyan-dim));
+  --hud-scanline-opacity: 0.025;
+  --hud-halo-opacity: 0.08;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  /* Ciano scurito: sul chiaro il #23f4ff non ha contrasto sufficiente. */
+  --hud-cyan: #00707f;
+  --hud-cyan-dim: rgba(0, 112, 127, 0.3);
+  /* Fondo leggermente piu' scuro del bianco dei pannelli: nel tema scuro i
+     pannelli si staccano col glow, qui devono farlo per differenza di tono. */
+  --hud-bg: #e5edf0;
+  --hud-panel-bg: #ffffff;
+  --hud-border: rgba(0, 112, 127, 0.32);
+  --hud-text: #0b2a31;
+  --hud-text-dim: #4f7078;
+
+  /* Piu' marcato che nel tema scuro: qui regge da solo l'evidenza della voce
+     di menu attiva, che sul nero era data dal contrasto col fondo. */
+  --hud-accent-soft: rgba(0, 112, 127, 0.14);
+  --hud-accent-softer: rgba(0, 112, 127, 0.05);
+  --hud-surface-soft: rgba(11, 42, 49, 0.04);
+  --hud-on-accent: #ffffff;
+  --hud-error: #c0392b;
+
+  /* Il glow sparisce: su fondo chiaro diventa una macchia sbiadita. Al suo
+     posto un'ombra neutra, che continua a staccare i pannelli dal fondo. */
+  --hud-glow: 0 1px 3px rgba(11, 42, 49, 0.12);
+  --hud-glow-strong: 0 2px 12px rgba(11, 42, 49, 0.12);
+  --hud-title-glow: none;
+  --hud-arc-glow: none;
+  --hud-scanline-opacity: 0;
+  --hud-halo-opacity: 0.05;
+
+  color-scheme: light;
+}
+
+:root {
   --mono: 'Share Tech Mono', ui-monospace, monospace;
   --display: 'Orbitron', var(--mono);
 
-  color-scheme: dark;
   color: var(--hud-text);
   background: var(--hud-bg);
   font: 16px/145% var(--mono);
@@ -27,8 +85,14 @@ body {
   margin: 0;
   min-height: 100svh;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(35, 244, 255, 0.08), transparent 60%),
-    repeating-linear-gradient(0deg, rgba(35, 244, 255, 0.025) 0px, rgba(35, 244, 255, 0.025) 1px, transparent 1px, transparent 3px),
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(35, 244, 255, var(--hud-halo-opacity)), transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(35, 244, 255, var(--hud-scanline-opacity)) 0px,
+      rgba(35, 244, 255, var(--hud-scanline-opacity)) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
     var(--hud-bg);
 }
 
@@ -41,7 +105,7 @@ h1, h2, h3 {
   font-family: var(--display);
   font-weight: 700;
   color: var(--hud-cyan);
-  text-shadow: 0 0 12px var(--hud-cyan-dim);
+  text-shadow: var(--hud-title-glow);
   margin: 0;
 }
 
