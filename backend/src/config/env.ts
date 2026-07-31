@@ -93,4 +93,14 @@ export const env = {
   // scaricano da questo URL) o foto su Facebook; senza, restano possibili solo
   // i post di solo testo su Facebook. Vuoto di default (es. su localhost).
   publicBaseUrl: optional("PUBLIC_BASE_URL"),
+  // SMTP per i codici di accesso via email. In sviluppo punta a Mailpit, che
+  // cattura le email invece di spedirle (UI su http://localhost:8025).
+  smtp: {
+    host: optional("SMTP_HOST"),
+    port: Number(optional("SMTP_PORT") ?? 1025),
+    secure: optional("SMTP_SECURE") === "true",
+    user: optional("SMTP_USER"),
+    password: optional("SMTP_PASSWORD"),
+    from: optional("SMTP_FROM") ?? "Family HUD <no-reply@family-hud.local>",
+  },
 };

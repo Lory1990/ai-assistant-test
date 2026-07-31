@@ -14,7 +14,7 @@ let cachedToken: ServiceAccountToken | null = null;
  * (registrazione, reset password) sono rare, non vale un giro di rete in piu'
  * a ogni chiamata.
  */
-async function getServiceAccountToken(): Promise<string> {
+export async function getAdminAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) return cachedToken.token;
 
   const { clientId, clientSecret } = requireBackendClientConfig();
@@ -37,7 +37,7 @@ async function getServiceAccountToken(): Promise<string> {
 }
 
 async function adminFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = await getServiceAccountToken();
+  const token = await getAdminAccessToken();
   return fetch(`${adminRealmEndpoint}${path}`, {
     ...init,
     headers: { ...init?.headers, Authorization: `Bearer ${token}` },
@@ -104,7 +104,7 @@ export async function registerUser(input: RegisterUserInput): Promise<void> {
   }
 }
 
-async function findUserIdByEmail(email: string): Promise<string | null> {
+export async function findUserIdByEmail(email: string): Promise<string | null> {
   const res = await adminFetch(`/users?email=${encodeURIComponent(email)}&exact=true`);
   if (!res.ok) throw new AuthError(`Ricerca utente fallita (${res.status}).`, 502);
   const users = (await res.json()) as { id: string }[];

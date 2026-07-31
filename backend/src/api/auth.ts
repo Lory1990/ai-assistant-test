@@ -13,6 +13,8 @@ import {
   type TokenSet,
 } from "../modules/auth/login.js";
 import { registerUser, sendPasswordResetEmail, listSocialProviders, userHasOtp } from "../modules/auth/keycloakAdmin.js";
+import { sendOtp, verifyOtp } from "../modules/auth/emailOtp.js";
+import { completePasswordlessLogin } from "../modules/auth/passwordlessLogin.js";
 
 const STATE_TTL_SECONDS = 10 * 60;
 const STATE_KEY_PREFIX = "kc-social-state:";
@@ -45,6 +47,41 @@ function sendAuthError(reply: FastifyReply, err: unknown) {
 export function registerAuthRoutes(app: FastifyInstance): void {
   // Tutte le rotte qui sono deliberatamente senza preHandler "authenticate":
   // servono proprio a ottenere il primo token.
+
+  /**
+   * Accesso senza password, passo 1: manda il codice all'email.
+   *
+   * Risponde ok anche per un'email senza account — chi riceve il codice entra
+   * comunque, perche' l'account viene creato al passo 2. Cosi' non serve
+   * distinguere "accedi" da "registrati", e l'endpoint non rivela chi e' iscritto.
+   */
+  app.post<{ Body: { email: string } }>("/api/auth/otp/request", async (request, reply) => {
+    const { email } = request.body ?? {};
+    if (!email?.trim()) return reply.code(400).send({ error: "Email obbligatoria." });
+    try {
+      await sendOtp("web-login", email);
+      return { ok: true };
+    } catch (err) {
+      return sendAuthError(reply, err);
+    }
+  });
+
+  /** Passo 2: codice verificato, si entra (creando l'account se l'email e' nuova). */
+  app.post<{ Body: { email: string; code: string; displayName?: string } }>(
+    "/api/auth/otp/verify",
+    async (request, reply) => {
+      const { email, code, displayName } = request.body ?? {};
+      if (!email?.trim() || !code?.trim()) {
+        return reply.code(400).send({ error: "Email e codice sono obbligatori." });
+      }
+      try {
+        await verifyOtp("web-login", email, code);
+        return await completePasswordlessLogin(email, displayName?.trim());
+      } catch (err) {
+        return sendAuthError(reply, err);
+      }
+    },
+  );
 
   app.post<{ Body: LoginBody }>("/api/auth/login", async (request, reply) => {
     const { email, password, totp } = request.body ?? {};

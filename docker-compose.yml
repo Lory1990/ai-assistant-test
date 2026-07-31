@@ -31,6 +31,20 @@ services:
       timeout: 5s
       retries: 10
 
+  # SMTP di sviluppo: cattura le email invece di spedirle, e le mostra su
+  # http://localhost:8025. Serve a provare il login via codice senza un
+  # provider reale — impostando SMTP_HOST/PORT/USER/PASS in backend/.env si
+  # passa al proprio server senza toccare codice.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: ["start-dev", "--import-realm"]
@@ -78,6 +92,8 @@ services:
       redis:
         condition: service_healthy
       keycloak:
+        condition: service_healthy
+      mailpit:
         condition: service_healthy
 
   frontend:

@@ -120,6 +120,16 @@ export async function loginWithPassword(email: string, password: string, totp?: 
   storeTokens((await res.json()) as TokenSet)
 }
 
+/** Passo 1 dell'accesso senza password: chiede il codice via email. */
+export function requestLoginCode(email: string): Promise<{ ok: boolean }> {
+  return postJson('/api/auth/otp/request', { email })
+}
+
+/** Passo 2: il codice vale come prova d'identità e apre la sessione. */
+export async function loginWithCode(email: string, code: string, displayName?: string): Promise<void> {
+  storeTokens(await postJson<TokenSet>('/api/auth/otp/verify', { email, code, displayName }))
+}
+
 export interface TwoFactorStatus {
   enabled: boolean
   setupUrl: string
