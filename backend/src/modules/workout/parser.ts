@@ -3,6 +3,17 @@ export interface ParsedExercise {
   sets?: number;
   reps?: number;
   weightKg?: number;
+  notes?: string;
+}
+
+/** Come si scrive un esercizio in chat: "panca piana 4x8 @ 60kg", "rematore 10 rip". */
+export function formatExercise(exercise: ParsedExercise): string {
+  const parts = [exercise.name];
+  if (exercise.sets && exercise.reps) parts.push(`${exercise.sets}x${exercise.reps}`);
+  else if (exercise.sets) parts.push(`${exercise.sets} serie`);
+  else if (exercise.reps) parts.push(`${exercise.reps} rip`);
+  if (exercise.weightKg) parts.push(`@ ${exercise.weightKg}kg`);
+  return parts.join(" ");
 }
 
 /**

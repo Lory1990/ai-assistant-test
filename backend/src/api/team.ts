@@ -6,7 +6,7 @@ import { generateCode } from "../utils/code.js";
 import { getTodayMeals } from "../modules/food/index.js";
 import { createGoal, listGoals } from "../modules/goals/index.js";
 import { getUpcomingImportantEvents } from "../modules/calendar/index.js";
-import { getSessionsSince, generateRecap, logExerciseFromText } from "../modules/workout/index.js";
+import { getSessionsSince, generateRecap, logExerciseFromText, formatLogResult } from "../modules/workout/index.js";
 import { listItems } from "../modules/shoppingList/index.js";
 import { broadcastToTeam } from "../ws/index.js";
 
@@ -110,12 +110,9 @@ export function registerTeamRoutes(app: FastifyInstance): void {
     if (!text) return reply.code(400).send({ error: "text è obbligatorio" });
 
     const user = request.currentUser!;
-    const session = await logExerciseFromText(user.id, user.teamId, text);
-    const last = session.exercises.at(-1)!;
+    const result = await logExerciseFromText(user.id, user.teamId, text);
     broadcastToTeam(user.teamId, { type: "data-updated", reason: "workout-logged" });
-    return {
-      message: `Esercizio registrato: ${last.name}${last.sets ? ` ${last.sets}x${last.reps ?? "?"}` : ""}${last.weightKg ? ` @ ${last.weightKg}kg` : ""}`,
-    };
+    return { message: formatLogResult(result) };
   });
 
   interface CreateGoalBody {

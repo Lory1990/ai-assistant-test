@@ -14,7 +14,7 @@ import { getTodayMeals, attachPhotoToLatestMeal } from "../modules/food/index.js
 import { savePhoto } from "../modules/food/photoStorage.js";
 import { createGoal, listGoals } from "../modules/goals/index.js";
 import { markEventImportant, getUpcomingImportantEvents } from "../modules/calendar/index.js";
-import { logExerciseFromText, generateRecap } from "../modules/workout/index.js";
+import { logExerciseFromText, formatLogResult, generateRecap } from "../modules/workout/index.js";
 import { playOnAlexa } from "../modules/music/index.js";
 import { turnOnTv, sendTvCommand, pairTv } from "../modules/tv/index.js";
 import { createMealPlan } from "../modules/mealPlan/index.js";
@@ -369,13 +369,9 @@ export function createBot(): Bot {
     if (!text) return ctx.reply('Uso: /allenamento <esercizio>, es. "panca piana 4x8 60kg"');
     const user = await requireLinkedUser(ctx);
     if (!user) return;
-    const session = await logExerciseFromText(user.id, user.teamId, text);
-    const lastExercise = session.exercises.at(-1)!;
-    await ctx.reply(
-      `Esercizio registrato: ${lastExercise.name}` +
-        (lastExercise.sets ? ` — ${lastExercise.sets}x${lastExercise.reps ?? "?"}` : "") +
-        (lastExercise.weightKg ? ` @ ${lastExercise.weightKg}kg` : ""),
-    );
+    // Se la scheda non e' deducibile la domanda finisce nella risposta: basta
+    // che l'utente risponda in chat, e' l'assistente a raccogliere il giorno.
+    await ctx.reply(formatLogResult(await logExerciseFromText(user.id, user.teamId, text)));
   });
 
   bot.command("recap", async (ctx) => {

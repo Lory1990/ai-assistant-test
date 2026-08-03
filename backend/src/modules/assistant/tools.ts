@@ -4,7 +4,7 @@ import { getDevices as getShellyDevices, toggleDevice as toggleShellyDevice } fr
 import { getShutters, openShutter, closeShutter, stopShutter } from "../tahoma/index.js";
 import { logMeal, getTodayMeals } from "../food/index.js";
 import { createGoal, listGoals } from "../goals/index.js";
-import { logExerciseFromText, generateRecap } from "../workout/index.js";
+import { logExercise, formatLogResult, setSessionPlanDay, generateRecap } from "../workout/index.js";
 import { markEventImportant, getUpcomingImportantEvents } from "../calendar/index.js";
 import { listItems, addItems, markItemChecked } from "../shoppingList/index.js";
 import { createMealPlan } from "../mealPlan/index.js";
@@ -186,11 +186,37 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
   },
   {
     name: "log_workout_exercise",
-    description: 'Registra un esercizio svolto oggi, da testo libero (es. "panca piana 4x8 60kg").',
+    description:
+      "Registra un esercizio appena svolto: apre la sessione di allenamento di oggi se non c'è ancora, " +
+      "altrimenti aggiunge l'esercizio a quella già aperta. Estrai tu i campi dalla frase dell'utente " +
+      '(es. "ho fatto 10 reps di rematore" → name: "rematore", reps: 10). Se la risposta dice che non si sa ' +
+      "quale giorno della scheda si sta eseguendo, chiedilo all'utente mostrandogli i giorni elencati e poi " +
+      "salva la sua risposta con set_workout_plan_day.",
     inputSchema: {
       type: "object",
-      properties: { text: { type: "string" } },
-      required: ["text"],
+      properties: {
+        name: { type: "string", description: 'Nome dell\'esercizio, senza numeri: es. "rematore", "panca piana".' },
+        sets: { type: "number", description: "Numero di serie, se indicato." },
+        reps: { type: "number", description: "Ripetizioni per serie, se indicato." },
+        weightKg: { type: "number", description: "Carico in kg, se indicato." },
+        notes: { type: "string", description: "Dettagli detti dall'utente (es. \"a cedimento\"), se ce ne sono." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "set_workout_plan_day",
+    description:
+      "Registra quale giorno della scheda l'utente sta eseguendo nella sessione di allenamento di oggi. " +
+      "Usalo dopo che l'utente ha risposto alla domanda su quale scheda sta facendo, o quando chiede di " +
+      "correggere il giorno. Se l'utente dice che si sta allenando fuori scheda non chiamarlo: la sessione " +
+      "resta registrata senza scheda.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dayOrder: { type: "number", description: "Numero del giorno nella rotazione, tra quelli elencati." },
+      },
+      required: ["dayOrder"],
     },
   },
   {
@@ -450,9 +476,38 @@ export async function executeTool(name: string, input: any, ctx: ToolContext): P
       return JSON.stringify(await listGoals(ctx.teamId, ctx.userId, input.category));
 
     case "log_workout_exercise": {
-      const session = await logExerciseFromText(ctx.userId, ctx.teamId, input.text);
-      const last = session.exercises.at(-1)!;
-      return `Esercizio registrato: ${last.name}${last.sets ? ` ${last.sets}x${last.reps ?? "?"}` : ""}${last.weightKg ? ` @ ${last.weightKg}kg` : ""}`;
+      const result = await logExercise(ctx.userId, ctx.teamId, {
+        name: input.name,
+        sets: input.sets,
+        reps: input.reps,
+        weightKg: input.weightKg,
+        notes: input.notes,
+      });
+      const lines = [formatLogResult(result)];
+      if (result.question) {
+        lines.push(
+          "Chiedi all'utente quale di questi giorni sta eseguendo e salva la risposta con set_workout_plan_day. " +
+            "Se si sta allenando fuori scheda lascia la sessione così com'è.",
+        );
+      }
+      return lines.join("\n");
+    }
+
+    case "set_workout_plan_day": {
+      const outcome = await setSessionPlanDay(ctx.userId, input.dayOrder);
+      if (outcome.ok) {
+        return `Sessione di oggi segnata come "${outcome.day.planName}", giorno ${outcome.day.order} (${outcome.day.name}).`;
+      }
+      switch (outcome.reason) {
+        case "no-session":
+          return "Nessuna sessione di allenamento aperta oggi: registra prima un esercizio con log_workout_exercise.";
+        case "no-plan":
+          return "L'utente non ha una scheda di allenamento attiva: la sessione resta registrata senza scheda.";
+        case "no-day":
+          return `Il giorno ${input.dayOrder} non esiste nella scheda "${outcome.planName}". Giorni disponibili: ${outcome.options
+            .map((day) => `${day.order}) ${day.name}`)
+            .join(", ")}.`;
+      }
     }
 
     case "get_workout_recap":
