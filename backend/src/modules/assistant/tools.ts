@@ -2,7 +2,13 @@ import type { AiToolDefinition } from "../../ai/types.js";
 import { remember, forgetByContent, listMemories } from "../memory/index.js";
 import { getDevices as getShellyDevices, toggleDevice as toggleShellyDevice } from "../shelly/index.js";
 import { getShutters, openShutter, closeShutter, stopShutter } from "../tahoma/index.js";
-import { logMeal, getTodayMeals } from "../food/index.js";
+import {
+  logMealEaten,
+  formatMealLogResult,
+  setTodayNutritionDay,
+  markPlannedMealEaten,
+  getTodayMeals,
+} from "../food/index.js";
 import { createGoal, listGoals } from "../goals/index.js";
 import { logExercise, formatLogResult, setSessionPlanDay, generateRecap } from "../workout/index.js";
 import { markEventImportant, getUpcomingImportantEvents } from "../calendar/index.js";
@@ -100,14 +106,51 @@ export const ASSISTANT_TOOLS: AiToolDefinition[] = [
   },
   {
     name: "log_meal",
-    description: "Registra un pasto mangiato ora tra i pasti di oggi del team.",
+    description:
+      "Registra tra i pasti mangiati di oggi qualcosa che l'utente dice di aver mangiato. Estrai tu i campi dalla " +
+      'frase (es. "ho mangiato 150g di pasta al pomodoro" → description: "pasta al pomodoro", grams: 150). Se il ' +
+      "piatto era tra i pasti in programma di oggi viene spuntato come mangiato, senza aggiungere un doppione. " +
+      "Se la risposta chiede quale pasto in programma era, girala all'utente e poi usa mark_planned_meal_eaten; " +
+      "se chiede quale giorno della scheda alimentare sta seguendo, usa set_nutrition_plan_day.",
     inputSchema: {
       type: "object",
       properties: {
-        description: { type: "string", description: 'es. "pasta al pomodoro"' },
-        grams: { type: "number" },
+        description: { type: "string", description: 'Cosa ha mangiato, senza quantità: es. "pasta al pomodoro".' },
+        grams: { type: "number", description: "Quantità in grammi, se indicata." },
+        calories: {
+          type: "number",
+          description: "Solo se le calorie sono già note (es. stimate da una foto): altrimenti omettilo, le cerca il sistema.",
+        },
       },
       required: ["description"],
+    },
+  },
+  {
+    name: "mark_planned_meal_eaten",
+    description:
+      "Spunta come mangiato uno dei pasti in programma di oggi. Usalo dopo che l'utente ha detto quale dei pasti " +
+      "elencati da log_meal aveva mangiato.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mealId: { type: "string", description: "Id del pasto in programma, tra quelli elencati." },
+        grams: { type: "number", description: "Quantità effettivamente mangiata, se diversa da quella prevista." },
+      },
+      required: ["mealId"],
+    },
+  },
+  {
+    name: "set_nutrition_plan_day",
+    description:
+      "Registra quale giorno della scheda alimentare l'utente sta seguendo oggi, e lo applica ai pasti di oggi. " +
+      "Usalo dopo che l'utente ha risposto alla domanda su quale giorno sta seguendo, o quando chiede di " +
+      "correggerlo. Se dice che oggi mangia fuori scheda non chiamarlo.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dayOrder: { type: "number", description: "Numero del giorno nella rotazione, tra quelli elencati." },
+      },
+      required: ["dayOrder"],
     },
   },
   {
@@ -436,8 +479,44 @@ export async function executeTool(name: string, input: any, ctx: ToolContext): P
     }
 
     case "log_meal": {
-      const meal = await logMeal({ userId: ctx.userId, teamId: ctx.teamId, description: input.description, grams: input.grams });
-      return `Pasto registrato: ${meal.description}${meal.calories ? ` (${Math.round(meal.calories)} kcal)` : ""}`;
+      const result = await logMealEaten(ctx.userId, ctx.teamId, {
+        description: input.description,
+        grams: input.grams,
+        calories: input.calories,
+      });
+      const lines = [formatMealLogResult(result)];
+      if (result.status === "which-planned") {
+        lines.push("Chiedi all'utente quale era e spuntalo con mark_planned_meal_eaten. Non ho registrato niente: quel cibo è già contato tra i pasti in programma di oggi.");
+      } else if (result.question) {
+        lines.push(
+          "Chiedi all'utente quale giorno sta seguendo e salva la risposta con set_nutrition_plan_day. " +
+            "Se oggi mangia fuori scheda lascia il pasto così com'è.",
+        );
+      }
+      return lines.join("\n");
+    }
+
+    case "mark_planned_meal_eaten": {
+      const outcome = await markPlannedMealEaten(ctx.userId, input.mealId, {
+        description: "",
+        grams: input.grams,
+      });
+      if (!outcome.ok) return "Quel pasto non è tra i pasti in programma di oggi: rileggi la lista con get_today_meals.";
+      const kcal = outcome.meal.calories ? ` — ${Math.round(outcome.meal.calories)} kcal` : "";
+      return `Spuntato come mangiato: ${outcome.meal.description}${kcal}`;
+    }
+
+    case "set_nutrition_plan_day": {
+      const outcome = await setTodayNutritionDay(ctx.userId, input.dayOrder);
+      if (outcome.ok) {
+        return `Oggi segnato come "${outcome.planName}", giorno ${outcome.day.order} (${outcome.day.name}): aggiornati ${outcome.updated} pasti di oggi.`;
+      }
+      if (outcome.reason === "no-plan") {
+        return "L'utente non ha una scheda alimentare attiva: i pasti restano registrati senza scheda.";
+      }
+      return `Il giorno ${input.dayOrder} non esiste nella scheda "${outcome.planName}". Giorni disponibili: ${outcome.options
+        .map((day) => `${day.order}) ${day.name}`)
+        .join(", ")}.`;
     }
 
     case "get_today_meals":

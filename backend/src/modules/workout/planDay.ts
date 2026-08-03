@@ -6,6 +6,7 @@
  * attribuire un allenamento al giorno sbagliato (o assillare l'utente con una
  * domanda che non serviva).
  */
+import { namesMatch } from "../plans/naming.js";
 
 export interface PlanDayRef {
   order: number;
@@ -14,47 +15,6 @@ export interface PlanDayRef {
 
 export function toDayRef(day: PlanDayRef): PlanDayRef {
   return { order: day.order, name: day.name };
-}
-
-/** Accenti via, punteggiatura via: "Rematore con bilanciere" e "rematore bilanciere" sono la stessa cosa. */
-export function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-/** Parole che da sole identificano un esercizio: "rematore", "panca" — non "con", "su", "ai". */
-function significantWords(normalized: string): string[] {
-  return normalized.split(" ").filter((word) => word.length >= 4);
-}
-
-/**
- * Il nome scritto in chat non e' quello della scheda: "rematore" sta per
- * "rematore con bilanciere", e il parser a regex puo' lasciare dentro pezzi di
- * frase ("ho fatto di rematore"). Basta quindi una parola in comune, oltre al
- * caso banale dei nomi uguali — ma deve essere quella che nomina il movimento.
- *
- * Le due strettoie servono entrambe. Un includes secco direbbe che "con" e
- * "curl con manubri" sono lo stesso esercizio; una parola in comune qualsiasi
- * accomunerebbe "croci ai cavi" e "trazioni ai cavi", che condividono
- * l'attrezzo e nient'altro. Nel dubbio non si riconosce il match e si chiede:
- * attribuire l'allenamento al giorno sbagliato e' peggio di una domanda in piu'.
- */
-export function namesMatch(a: string, b: string): boolean {
-  const [na, nb] = [normalizeName(a), normalizeName(b)];
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-
-  const [wordsA, wordsB] = [significantWords(na), significantWords(nb)];
-  const shared = wordsA.filter((word) => wordsB.includes(word));
-  // In italiano il movimento apre il nome ("Rematore con bilanciere", "Croci ai
-  // cavi"), quindi la prima parola piena di uno dei due lati e' quella che deve
-  // combaciare. "ho fatto di rematore" ci arriva dall'altro lato: la prima
-  // parola piena della scheda e' "rematore", e tanto basta.
-  return shared.includes(wordsA[0]) || shared.includes(wordsB[0]);
 }
 
 export interface PlanDayLike extends PlanDayRef {
